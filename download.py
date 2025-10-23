@@ -10,6 +10,18 @@ HEADLESS = False
 SCROLL_PAUSE_MS = 700
 MAX_IDLE_SCROLL_CYCLES = 3
 UPSCALE_TIMEOUT_MS = 5 * 60 * 1000  # 5 perc
+ASSET_BASE_HEADERS = {
+    "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
+    "priority": "i",
+    "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "image",
+    "sec-fetch-mode": "no-cors",
+    "sec-fetch-site": "same-site",
+    "referer": "https://grok.com/",
+}
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -34,7 +46,8 @@ def cookie_header_to_list(header: str, domain: str):
             "value": value.strip(),
             "domain": domain,
             "path": "/",
-            "secure": True
+            "secure": True,
+            "sameSite": "None"
         })
     return cookies
 
@@ -122,7 +135,17 @@ def process_one_card(context, page, card, index: int):
             print("⚠️ 0 bájtos fájl — megpróbálom közvetlen URL-ből letölteni...")
             url = download.url
             if url:
-                r = requests.get(url, stream=True)
+                page_cookies = context.cookies()
+                cookie_jar = {c['name']: c['value'] for c in page_cookies if "grok.com" in c['domain']}
+                headers = ASSET_BASE_HEADERS.copy()
+                headers.update({
+                    "user-agent": USER_AGENT,
+                })
+                try:
+                    r = requests.get(url, stream=True, headers=headers, cookies=cookie_jar, timeout=60)
+                except requests.RequestException as req_err:
+                    print(f"❌ HTTP hiba: {req_err}")
+                    return
                 if r.ok:
                     with open(filepath, "wb") as f:
                         for chunk in r.iter_content(1024 * 1024):
@@ -151,33 +174,75 @@ def process_one_card(context, page, card, index: int):
 
 def main():
     cookie_header = load_cookie_header(COOKIE_FILE)
-    cookies = cookie_header_to_list(cookie_header, "grok.com")
+    cookies = cookie_header_to_list(cookie_header, ".grok.com")
 
     with sync_playwright() as p:
         # Realistic user-agent (Chrome Win10)
-        browser = p.chromium.launch(headless=HEADLESS,
-                                   args=[
-                                       '--disable-blink-features=AutomationControlled',
-                                       '--disable-infobars',
-                                       '--disable-web-security',
-                                       '--disable-features=IsolateOrigins,site-per-process',
-                                   ])
+        launch_args = [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-infobars',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-features=TranslateUI',
+        ]
+        try:
+            browser = p.chromium.launch(channel="chrome", headless=HEADLESS, args=launch_args)
+        except Exception:
+            try:
+                browser = p.chromium.launch(channel="msedge", headless=HEADLESS, args=launch_args)
+            except Exception:
+                browser = p.chromium.launch(headless=HEADLESS, args=launch_args)
         context = browser.new_context(
             accept_downloads=True,
             user_agent=USER_AGENT,
             viewport={"width": 1280, "height": 800},
             locale="hu-HU",
+            timezone_id="Europe/Budapest",
+            color_scheme="dark",
+            extra_http_headers={
+                "Accept-Language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Sec-CH-UA": '"Google Chrome";v="141", "Chromium";v="141", "Not=A?Brand";v="24"',
+                "Sec-CH-UA-Mobile": "?0",
+                "Sec-CH-UA-Platform": '"Windows"',
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Site": "same-origin",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-User": "?1",
+                "Sec-Fetch-Dest": "document",
+            },
         )
         context.add_cookies(cookies)
         page = context.new_page()
 
+        def asset_header_rewrite(route, request):
+            headers = dict(request.headers)
+            headers.update(ASSET_BASE_HEADERS)
+            headers.setdefault("user-agent", USER_AGENT)
+            route.continue_(headers=headers)
+
+        page.route("https://assets.grok.com/*", asset_header_rewrite)
+
         # Remove navigator.webdriver property
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        page.add_init_script(
+            """
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            window.chrome = window.chrome || { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['hu-HU', 'hu', 'en-US', 'en']});
+            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
+        """
+        )
 
         print("🌐 Galéria megnyitása...")
-        page.goto(FAVORITES_URL, wait_until="domcontentloaded")
+        response = page.goto(FAVORITES_URL, wait_until="domcontentloaded")
 
-        page.wait_for_timeout(20000)
+        if response and response.status == 403:
+            print("❌ 403 Forbidden — valószínűleg a cookie érvénytelen vagy a böngésző fingerprint blokkolt.")
+            print("ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.")
+            return
+
+        page.wait_for_timeout(12000)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
