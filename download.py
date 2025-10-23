@@ -12,7 +12,7 @@ DOWNLOAD_DIR = "downloads"
 HEADLESS = False
 SCROLL_PAUSE_MS = 400
 MAX_IDLE_SCROLL_CYCLES = 10
-UPSCALE_TIMEOUT_MS = 5 * 60 * 1000  # 5 perc
+UPSCALE_TIMEOUT_MS = 1 * 60 * 1000  # 1 perc
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -116,7 +116,7 @@ def find_card_by_identifier(cards_locator, target_identifier: str):
 # --- Fő feldolgozó ---
 
 
-def process_one_card(context, page, card, index: int, identifier: str = ""):
+def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: list):
     print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
     card.scroll_into_view_if_needed()
     page.wait_for_timeout(random.randint(500, 800))
@@ -132,23 +132,26 @@ def process_one_card(context, page, card, index: int, identifier: str = ""):
         # 2️⃣ Upscale állapot ellenőrzés
         disabled = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and @aria-disabled='true']")
         active = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and not(@aria-disabled)]")
-        page.wait_for_timeout(random.randint(300, 500))
+        page.wait_for_timeout(random.randint(500, 800))
 
         if disabled.count() > 0:
             print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
-            page.wait_for_timeout(random.randint(300, 500))
             page.mouse.click(200, 100)
         else:
             print("🕐 Upscale indítása...")
             active.first.click()
             page.wait_for_timeout(random.randint(300, 500))
             page.mouse.click(200, 100)
-            # várjuk a HD ikon megjelenését
-            page.wait_for_selector("button:has(div:text('HD'))", timeout=UPSCALE_TIMEOUT_MS)
-            print("✅ Upscale kész.")
+            try:
+                # várjuk a HD ikon megjelenését
+                page.wait_for_selector("button:has(div:text('HD'))", timeout=UPSCALE_TIMEOUT_MS)
+                print("✅ Upscale kész.")
+            except PWTimeout:
+                print("⚠️ Upscale időtúllépés – letöltés upscale nélkül.")
+                upscale_failures.append(identifier)
 
         # 3️⃣ Menü bezárása
-        page.wait_for_timeout(random.randint(100, 300))
+        page.wait_for_timeout(random.randint(300, 500))
 
         # 4️⃣ Letöltés
         page.wait_for_selector("button[aria-label='Letöltés']", timeout=60000)
@@ -299,65 +302,81 @@ def main():
         pending_set = set()
         processed_count = 0
         idle_cycles = 0
+        upscale_failures = []
 
-        while True:
-            card_count = cards_locator.count()
-            new_cards_added = False
+        try:
+            while True:
+                card_count = cards_locator.count()
+                new_cards_added = False
 
-            for idx in range(card_count):
-                card = cards_locator.nth(idx)
-                identifier = get_card_identifier(card)
-                if not identifier or identifier == "No ID":
-                    continue
-                if identifier in processed_ids or identifier in pending_set:
-                    continue
-                pending_queue.append(identifier)
-                pending_set.add(identifier)
-                new_cards_added = True
-
-            if new_cards_added:
-                idle_cycles = 0
-
-            if not pending_queue:
-                idle_cycles += 1
-                page.wait_for_timeout(400)
-
-                if idle_cycles < MAX_IDLE_SCROLL_CYCLES:
-                    continue
-
-                prev_count = card_count
-                scroll_to_load_more(page)
-                page.wait_for_timeout(400)
-                new_count = cards_locator.count()
-                if new_count > prev_count:
-                    idle_cycles = 0
-                    continue
-
-                if idle_cycles >= MAX_IDLE_SCROLL_CYCLES * 2:
-                    print("✅ Az összes elérhető kártya feldolgozva.")
-                    break
-
-                continue
-
-            identifier = pending_queue.pop(0)
-            pending_set.discard(identifier)
-            card = find_card_by_identifier(cards_locator, identifier)
-
-            if card is None:
-                # Kártya jelenleg nincs a DOM-ban; tegyük vissza a sor végére és várjunk
-                if identifier not in pending_set:
+                for idx in range(card_count):
+                    card = cards_locator.nth(idx)
+                    identifier = get_card_identifier(card)
+                    if not identifier or identifier == "No ID":
+                        continue
+                    if identifier in processed_ids or identifier in pending_set:
+                        continue
                     pending_queue.append(identifier)
                     pending_set.add(identifier)
-                page.wait_for_timeout(300)
-                continue
+                    new_cards_added = True
 
-            process_one_card(context, page, card, processed_count, identifier)
-            processed_ids.add(identifier)
-            processed_count += 1
-            idle_cycles = 0
+                if new_cards_added:
+                    idle_cycles = 0
 
-        print("\n🎉 Kész – minden videó feldolgozva.")
-        browser.close()
+                if not pending_queue:
+                    idle_cycles += 1
+                    page.wait_for_timeout(400)
+
+                    if idle_cycles < MAX_IDLE_SCROLL_CYCLES:
+                        continue
+
+                    prev_count = card_count
+                    scroll_to_load_more(page)
+                    page.wait_for_timeout(400)
+                    new_count = cards_locator.count()
+                    if new_count > prev_count:
+                        idle_cycles = 0
+                        continue
+
+                    if idle_cycles >= MAX_IDLE_SCROLL_CYCLES * 2:
+                        print("✅ Az összes elérhető kártya feldolgozva.")
+                        break
+
+                    continue
+
+                identifier = pending_queue.pop(0)
+                pending_set.discard(identifier)
+                card = find_card_by_identifier(cards_locator, identifier)
+
+                if card is None:
+                    # Kártya jelenleg nincs a DOM-ban; tegyük vissza a sor végére és várjunk
+                    if identifier not in pending_set:
+                        pending_queue.append(identifier)
+                        pending_set.add(identifier)
+                    page.wait_for_timeout(300)
+                    continue
+
+                print(f"🔢 Hátralévő megtalált videók száma: {len(pending_queue)}")
+                process_one_card(context, page, card, processed_count, identifier, upscale_failures)
+                processed_ids.add(identifier)
+                processed_count += 1
+                idle_cycles = 0
+
+            print("\n🎉 Kész – minden videó feldolgozva.")
+        except Exception as main_err:
+            print(f"❌ Folyamat megszakadt: {main_err}")
+            raise
+        finally:
+            if upscale_failures:
+                print("\n⚠️ Az alábbi videók upscale nélkül kerültek letöltésre:")
+                for failed in upscale_failures:
+                    print(f"   • {failed}")
+            else:
+                print("\n✅ Minden videó sikeresen upscale-lve lett a letöltés előtt.")
+            try:
+                browser.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
