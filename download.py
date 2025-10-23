@@ -1,6 +1,6 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 import os
-import time
+import sys
 import re
 import requests
 import random
@@ -12,7 +12,7 @@ DOWNLOAD_DIR = "downloads"
 HEADLESS = False
 SCROLL_PAUSE_MS = 400
 MAX_IDLE_SCROLL_CYCLES = 10
-UPSCALE_TIMEOUT_MS = 1 * 60 * 1000  # 1 perc
+UPSCALE_TIMEOUT_MS = 0.5 * 60 * 1000  # 30 másodperc
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -27,6 +27,11 @@ ASSET_BASE_HEADERS = {
 }
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# Terminál színezés egyszerű kényelmi eszközökkel (ha támogatott)
+USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+COLOR_GRAY = "\033[90m" if USE_COLOR else ""
+COLOR_RESET = "\033[0m" if USE_COLOR else ""
 
 # --- Segédfüggvények ---
 
@@ -203,7 +208,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             print(f"📥 Letöltve: {filename}")
 
     except Exception as e:
-        print(f"❌ Hiba a(z) {index + 1}. videónál: {e}")
+        print(f"❌ Hiba a(z) {index + 1}. videónál:\n{COLOR_GRAY}{e}{COLOR_RESET}")
 
     finally:
         # 5️⃣ Visszalépés
@@ -230,7 +235,7 @@ def main():
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process,Translate,TranslateUI,TranslateSubFrames,LanguageDetection,RendererTranslate',
             '--disable-translate',
-            '--accept-lang=hu-HU,hu,en-US,en',
+            '--accept-lang=hu-HU,hu',
         ]
         try:
             browser = p.chromium.launch(channel="chrome", headless=HEADLESS, args=launch_args)
@@ -247,7 +252,7 @@ def main():
             timezone_id="Europe/Budapest",
             color_scheme="dark",
             extra_http_headers={
-                "Accept-Language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept-Language": "hu-HU,hu;q=0.9",
                 "Sec-CH-UA": '"Google Chrome";v="141", "Chromium";v="141", "Not=A?Brand";v="24"',
                 "Sec-CH-UA-Mobile": "?0",
                 "Sec-CH-UA-Platform": '"Windows"',
@@ -275,7 +280,7 @@ def main():
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             window.chrome = window.chrome || { runtime: {} };
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['hu-HU', 'hu', 'en-US', 'en']});
+            Object.defineProperty(navigator, 'languages', {get: () => ['hu-HU', 'hu']});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
             Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
         """
@@ -363,9 +368,16 @@ def main():
                 idle_cycles = 0
 
             print("\n🎉 Kész – minden videó feldolgozva.")
-        except Exception as main_err:
-            print(f"❌ Folyamat megszakadt: {main_err}")
-            raise
+        except Exception as e:
+            print(f"❌ Folyamat megszakadt:\n\n{COLOR_GRAY}{e}{COLOR_RESET}")
+            err_text = str(e).lower()
+            transient_browser_errors = (
+                "target closed",
+                "page closed",
+                "browser has been closed",
+            )
+            if not any(token in err_text for token in transient_browser_errors):
+                raise
         finally:
             if upscale_failures:
                 print("\n⚠️ Az alábbi videók upscale nélkül kerültek letöltésre:")
