@@ -74,6 +74,27 @@ def get_filename_from_url(url: str, index: int):
     m = re.search(r"([a-f0-9-]{36})", url)
     return f"{m.group(1) if m else f'video_{index+1}'} .mp4"
 
+
+def get_card_identifier(card):
+    try:
+        identifier = card.evaluate(
+            """
+            el => el.getAttribute('data-media-id')
+                || el.getAttribute('data-id')
+                || el.dataset?.id
+                || el.dataset?.mediaId
+                || el.querySelector('video source')?.src
+                || el.querySelector('video')?.src
+                || el.querySelector('img')?.src
+                || el.innerText?.slice(0, 120)
+            """
+        )
+        if identifier:
+            return identifier
+    except Exception:
+        pass
+    return None
+
 # --- Fő feldolgozó ---
 
 def process_one_card(context, page, card, index: int):
@@ -182,8 +203,9 @@ def main():
             '--disable-blink-features=AutomationControlled',
             '--disable-infobars',
             '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-features=TranslateUI',
+            '--disable-features=IsolateOrigins,site-per-process,Translate,TranslateUI,TranslateSubFrames,LanguageDetection,RendererTranslate',
+            '--disable-translate',
+            '--accept-lang=hu-HU,hu,en-US,en',
         ]
         try:
             browser = p.chromium.launch(channel="chrome", headless=HEADLESS, args=launch_args)
@@ -251,15 +273,36 @@ def main():
 
         print("🔽 Görgetés a teljes lista betöltéséhez...")
         ensure_cards_loaded(page)
-        cards = page.locator("//div[contains(@class,'group/media-post-masonry-card')]").all()
-        print(f"📸 Összesen {len(cards)} videó található.")
+        cards_locator = page.locator("//div[contains(@class,'group/media-post-masonry-card')]")
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(500)
+        total_detected = cards_locator.count()
+        print(f"📸 Összesen {total_detected} videó található.")
 
-        for i in range(len(cards)):
-            # mindig újra lekérdezzük, hogy az index biztos jó legyen
-            cards = page.locator("//div[contains(@class,'group/media-post-masonry-card')]").all()
-            if i >= len(cards):
+        processed_ids = set()
+        processed_count = 0
+
+        while True:
+            card_count = cards_locator.count()
+            if card_count == 0:
                 break
-            process_one_card(context, page, cards[i], i)
+
+            found_new_card = False
+            for idx in range(card_count):
+                card = cards_locator.nth(idx)
+                identifier = get_card_identifier(card) or f"index-{idx}"
+                if identifier in processed_ids:
+                    continue
+
+                process_one_card(context, page, card, processed_count)
+                processed_ids.add(identifier)
+                processed_count += 1
+                found_new_card = True
+                break
+
+            if not found_new_card:
+                print("✅ Az összes elérhető kártya feldolgozva.")
+                break
 
         print("\n🎉 Kész – minden videó feldolgozva.")
         browser.close()
