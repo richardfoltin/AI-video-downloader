@@ -103,6 +103,16 @@ def get_card_identifier(card):
         pass
     return "No ID"
 
+
+def find_card_by_identifier(cards_locator, target_identifier: str):
+    """Keressük meg a kártya lokátort azonosító alapján."""
+    card_count = cards_locator.count()
+    for idx in range(card_count):
+        card = cards_locator.nth(idx)
+        if get_card_identifier(card) == target_identifier:
+            return card
+    return None
+
 # --- Fő feldolgozó ---
 
 
@@ -202,7 +212,7 @@ def process_one_card(context, page, card, index: int, identifier: str = ""):
             print("↩️  Visszatérés a galériába.")
         except:
             print("⚠️  Nem sikerült visszalépni, de folytatom.")
-        time.sleep(random.randint(1000, 1300))
+        page.wait_for_timeout(random.randint(1000, 1300))
 
 
 def main():
@@ -285,38 +295,66 @@ def main():
 
         cards_locator = page.locator("//div[contains(@class,'group/media-post-masonry-card')]")
         processed_ids = set()
+        pending_queue = []
+        pending_set = set()
         processed_count = 0
-        idle_scrolls = 0
+        idle_cycles = 0
 
         while True:
             card_count = cards_locator.count()
-            if card_count == 0:
-                break
+            new_cards_added = False
 
             for idx in range(card_count):
                 card = cards_locator.nth(idx)
-                identifier = get_card_identifier(card) or f"index-{idx}"
-                if identifier in processed_ids:
+                identifier = get_card_identifier(card)
+                if not identifier or identifier == "No ID":
+                    continue
+                if identifier in processed_ids or identifier in pending_set:
+                    continue
+                pending_queue.append(identifier)
+                pending_set.add(identifier)
+                new_cards_added = True
+
+            if new_cards_added:
+                idle_cycles = 0
+
+            if not pending_queue:
+                idle_cycles += 1
+                page.wait_for_timeout(400)
+
+                if idle_cycles < MAX_IDLE_SCROLL_CYCLES:
                     continue
 
-                process_one_card(context, page, card, processed_count, identifier)
-                processed_ids.add(identifier)
-                processed_count += 1
-                idle_scrolls = 0
-                break
-            else:
-                # Ha nincs új kártya a látható tartományban, próbáljunk lejjebb görgetni
                 prev_count = card_count
                 scroll_to_load_more(page)
                 page.wait_for_timeout(400)
                 new_count = cards_locator.count()
-                if new_count <= prev_count:
-                    idle_scrolls += 1
-                    if idle_scrolls >= MAX_IDLE_SCROLL_CYCLES:
-                        print("✅ Az összes elérhető kártya feldolgozva.")
-                        break
-                else:
-                    idle_scrolls = 0
+                if new_count > prev_count:
+                    idle_cycles = 0
+                    continue
+
+                if idle_cycles >= MAX_IDLE_SCROLL_CYCLES * 2:
+                    print("✅ Az összes elérhető kártya feldolgozva.")
+                    break
+
+                continue
+
+            identifier = pending_queue.pop(0)
+            pending_set.discard(identifier)
+            card = find_card_by_identifier(cards_locator, identifier)
+
+            if card is None:
+                # Kártya jelenleg nincs a DOM-ban; tegyük vissza a sor végére és várjunk
+                if identifier not in pending_set:
+                    pending_queue.append(identifier)
+                    pending_set.add(identifier)
+                page.wait_for_timeout(300)
+                continue
+
+            process_one_card(context, page, card, processed_count, identifier)
+            processed_ids.add(identifier)
+            processed_count += 1
+            idle_cycles = 0
 
         print("\n🎉 Kész – minden videó feldolgozva.")
         browser.close()
