@@ -1,0 +1,5 @@
+cookie.txt
+session.json
+downloads/
+__pycache__/
+*.pyc
