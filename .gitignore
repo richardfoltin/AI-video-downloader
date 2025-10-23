@@ -3,3 +3,5 @@ session.json
 downloads/
 __pycache__/
 *.pyc
+.vscode/
+.env

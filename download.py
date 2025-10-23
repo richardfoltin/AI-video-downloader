@@ -1,5 +1,8 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-import os, time, re, requests
+import os
+import time
+import re
+import requests
 import random
 
 FAVORITES_URL = "https://grok.com/imagine/favorites"
@@ -7,8 +10,8 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 COOKIE_FILE = "cookies.txt"
 DOWNLOAD_DIR = "downloads"
 HEADLESS = False
-SCROLL_PAUSE_MS = 700
-MAX_IDLE_SCROLL_CYCLES = 3
+SCROLL_PAUSE_MS = 400
+MAX_IDLE_SCROLL_CYCLES = 10
 UPSCALE_TIMEOUT_MS = 5 * 60 * 1000  # 5 perc
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -27,12 +30,14 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # --- Segédfüggvények ---
 
+
 def load_cookie_header(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         data = f.read().strip()
     if not data:
         raise ValueError("A cookie fájl üres!")
     return data
+
 
 def cookie_header_to_list(header: str, domain: str):
     cookies = []
@@ -51,9 +56,12 @@ def cookie_header_to_list(header: str, domain: str):
         })
     return cookies
 
+
 def scroll_to_load_more(page):
-    page.mouse.wheel(0, 2000)
+    page.mouse.wheel(0, 1000)
     page.wait_for_timeout(random.randint(100, 400) + SCROLL_PAUSE_MS)
+    print("⬇️ Görgetés...")
+
 
 def ensure_cards_loaded(page):
     idle = 0
@@ -69,40 +77,41 @@ def ensure_cards_loaded(page):
         prev = count
         scroll_to_load_more(page)
 
+
 def get_filename_from_url(url: str, index: int):
     """Próbáljuk az URL-ből kinyerni a Grok video ID-t, fallback az index."""
     m = re.search(r"([a-f0-9-]{36})", url)
-    return f"{m.group(1) if m else f'video_{index+1}'} .mp4"
+    return f"{m.group(1) if m else f'video_{index + 1}'} .mp4"
 
 
 def get_card_identifier(card):
     try:
-        identifier = card.evaluate(
-            """
-            el => el.getAttribute('data-media-id')
-                || el.getAttribute('data-id')
-                || el.dataset?.id
-                || el.dataset?.mediaId
-                || el.querySelector('video source')?.src
-                || el.querySelector('video')?.src
-                || el.querySelector('img')?.src
-                || el.innerText?.slice(0, 120)
-            """
-        )
+        identifier = card.evaluate('el => el.querySelector("img")?.src || null')
         if identifier:
+            identifier = str(identifier)
+            slash_index = identifier.rfind("/")
+            if slash_index != -1 and slash_index + 1 < len(identifier):
+                name = identifier[slash_index + 1:]
+                question_index = name.find("?")
+                if question_index != -1:
+                    name = name[:question_index]
+                if name:
+                    return name
             return identifier
     except Exception:
+        print("❌ Hiba a videó azonosító kinyerésekor.")
         pass
-    return None
+    return "No ID"
 
 # --- Fő feldolgozó ---
 
-def process_one_card(context, page, card, index: int):
-    print(f"\n🎬 {index+1}. videó feldolgozása...")
+
+def process_one_card(context, page, card, index: int, identifier: str = ""):
+    print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
     card.scroll_into_view_if_needed()
     page.wait_for_timeout(random.randint(500, 800))
     card.click()
-    print("🖱️ Megnyitva...")
+    print("🖱️  Megnyitva...")
 
     try:
         # 1️⃣ Menü megnyitása
@@ -113,6 +122,7 @@ def process_one_card(context, page, card, index: int):
         # 2️⃣ Upscale állapot ellenőrzés
         disabled = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and @aria-disabled='true']")
         active = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and not(@aria-disabled)]")
+        page.wait_for_timeout(random.randint(300, 500))
 
         if disabled.count() > 0:
             print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
@@ -141,7 +151,7 @@ def process_one_card(context, page, card, index: int):
             dl_button.click()
         download = dl_info.value
 
-        filename = download.suggested_filename or f"video_{index+1}.mp4"
+        filename = download.suggested_filename or f"video_{index + 1}.mp4"
         filepath = os.path.join(DOWNLOAD_DIR, filename)
 
         # ha már létezik
@@ -180,17 +190,19 @@ def process_one_card(context, page, card, index: int):
             print(f"📥 Letöltve: {filename}")
 
     except Exception as e:
-        print(f"❌ Hiba a(z) {index+1}. videónál: {e}")
+        print(f"❌ Hiba a(z) {index + 1}. videónál: {e}")
 
     finally:
         # 5️⃣ Visszalépés
         try:
-            page.click("button[aria-label='Vissza']")
+            page.wait_for_timeout(random.randint(100, 300))
+            page.wait_for_selector("button[aria-label='Vissza']:visible", timeout=10000)
+            page.locator("button[aria-label='Vissza']").first.click()
             page.wait_for_selector("div[role='listitem']", timeout=15000)
-            print("↩️ Visszatérés a galériába.")
+            print("↩️  Visszatérés a galériába.")
         except:
-            print("⚠️ Nem sikerült visszalépni, de folytatom.")
-        time.sleep(1)
+            print("⚠️  Nem sikerült visszalépni, de folytatom.")
+        time.sleep(random.randint(1000, 1300))
 
 
 def main():
@@ -264,48 +276,51 @@ def main():
             print("ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.")
             return
 
-        page.wait_for_timeout(12000)
+        page.wait_for_timeout(10000)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
             print("❌ Nem sikerült betölteni a galériát – ellenőrizd a cookie fájlt.")
             return
 
-        print("🔽 Görgetés a teljes lista betöltéséhez...")
-        ensure_cards_loaded(page)
         cards_locator = page.locator("//div[contains(@class,'group/media-post-masonry-card')]")
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(500)
-        total_detected = cards_locator.count()
-        print(f"📸 Összesen {total_detected} videó található.")
-
         processed_ids = set()
         processed_count = 0
+        idle_scrolls = 0
 
         while True:
             card_count = cards_locator.count()
             if card_count == 0:
                 break
 
-            found_new_card = False
             for idx in range(card_count):
                 card = cards_locator.nth(idx)
                 identifier = get_card_identifier(card) or f"index-{idx}"
                 if identifier in processed_ids:
                     continue
 
-                process_one_card(context, page, card, processed_count)
+                process_one_card(context, page, card, processed_count, identifier)
                 processed_ids.add(identifier)
                 processed_count += 1
-                found_new_card = True
+                idle_scrolls = 0
                 break
-
-            if not found_new_card:
-                print("✅ Az összes elérhető kártya feldolgozva.")
-                break
+            else:
+                # Ha nincs új kártya a látható tartományban, próbáljunk lejjebb görgetni
+                prev_count = card_count
+                scroll_to_load_more(page)
+                page.wait_for_timeout(400)
+                new_count = cards_locator.count()
+                if new_count <= prev_count:
+                    idle_scrolls += 1
+                    if idle_scrolls >= MAX_IDLE_SCROLL_CYCLES:
+                        print("✅ Az összes elérhető kártya feldolgozva.")
+                        break
+                else:
+                    idle_scrolls = 0
 
         print("\n🎉 Kész – minden videó feldolgozva.")
         browser.close()
+
 
 if __name__ == "__main__":
     main()

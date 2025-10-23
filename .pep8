@@ -1,0 +1,6 @@
+;.pep8 file is needed because vscode autopep8 args settings do not apply to the virtual environment
+
+[pycodestyle]
+max_line_length = 170
+ignore = errors
+experimental = True
