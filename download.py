@@ -1,7 +1,9 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 import os, time, re, requests
+import random
 
 FAVORITES_URL = "https://grok.com/imagine/favorites"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 COOKIE_FILE = "cookies.txt"
 DOWNLOAD_DIR = "downloads"
 HEADLESS = False
@@ -38,7 +40,7 @@ def cookie_header_to_list(header: str, domain: str):
 
 def scroll_to_load_more(page):
     page.mouse.wheel(0, 2000)
-    page.wait_for_timeout(SCROLL_PAUSE_MS)
+    page.wait_for_timeout(random.randint(100, 400) + SCROLL_PAUSE_MS)
 
 def ensure_cards_loaded(page):
     idle = 0
@@ -64,7 +66,7 @@ def get_filename_from_url(url: str, index: int):
 def process_one_card(context, page, card, index: int):
     print(f"\n🎬 {index+1}. videó feldolgozása...")
     card.scroll_into_view_if_needed()
-    page.wait_for_timeout(300)
+    page.wait_for_timeout(random.randint(500, 800))
     card.click()
     print("🖱️ Megnyitva...")
 
@@ -80,16 +82,19 @@ def process_one_card(context, page, card, index: int):
 
         if disabled.count() > 0:
             print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
+            page.wait_for_timeout(random.randint(300, 500))
+            page.mouse.click(200, 100)
         else:
             print("🕐 Upscale indítása...")
             active.first.click()
+            page.wait_for_timeout(random.randint(300, 500))
+            page.mouse.click(200, 100)
             # várjuk a HD ikon megjelenését
             page.wait_for_selector("button:has(div:text('HD'))", timeout=UPSCALE_TIMEOUT_MS)
             print("✅ Upscale kész.")
 
         # 3️⃣ Menü bezárása
-        page.mouse.click(10, 10)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(random.randint(100, 300))
 
         # 4️⃣ Letöltés
         page.wait_for_selector("button[aria-label='Letöltés']", timeout=60000)
@@ -149,14 +154,30 @@ def main():
     cookies = cookie_header_to_list(cookie_header, "grok.com")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=HEADLESS)
-        context = browser.new_context(accept_downloads=True)
+        # Realistic user-agent (Chrome Win10)
+        browser = p.chromium.launch(headless=HEADLESS,
+                                   args=[
+                                       '--disable-blink-features=AutomationControlled',
+                                       '--disable-infobars',
+                                       '--disable-web-security',
+                                       '--disable-features=IsolateOrigins,site-per-process',
+                                   ])
+        context = browser.new_context(
+            accept_downloads=True,
+            user_agent=USER_AGENT,
+            viewport={"width": 1280, "height": 800},
+            locale="hu-HU",
+        )
         context.add_cookies(cookies)
         page = context.new_page()
+
+        # Remove navigator.webdriver property
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         print("🌐 Galéria megnyitása...")
         page.goto(FAVORITES_URL, wait_until="domcontentloaded")
 
+        page.wait_for_timeout(20000)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
