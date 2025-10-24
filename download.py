@@ -33,6 +33,32 @@ USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
 
+# --- UI szövegkonstansok és segédfüggvények ---
+
+MORE_OPTIONS_LABELS = ["További lehetőségek", "More options"]
+DOWNLOAD_BUTTON_LABELS = ["Letöltés", "Download"]
+BACK_BUTTON_LABELS = ["Vissza", "Back"]
+UPSCALE_MENU_LABELS = ["Upscale video", "Videó skálázása"]
+
+
+def make_aria_selector(tag: str, labels):
+    selectors = [f"{tag}[aria-label='{label}']" for label in labels]
+    return ", ".join(selectors)
+
+
+def build_menuitem_xpath(texts, disabled: bool):
+    text_conditions = " or ".join([f"contains(normalize-space(.), '{text}')" for text in texts])
+    disabled_clause = "@aria-disabled='true'" if disabled else "not(@aria-disabled)"
+    return f"//div[@role='menuitem' and ({text_conditions}) and {disabled_clause}]"
+
+
+MORE_OPTIONS_BUTTON_SELECTOR = make_aria_selector("button", MORE_OPTIONS_LABELS)
+DOWNLOAD_BUTTON_SELECTOR = make_aria_selector("button", DOWNLOAD_BUTTON_LABELS)
+BACK_BUTTON_SELECTOR = make_aria_selector("button", BACK_BUTTON_LABELS)
+UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(UPSCALE_MENU_LABELS, disabled=True)
+UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(UPSCALE_MENU_LABELS, disabled=False)
+
+
 # --- Segédfüggvények ---
 
 
@@ -130,13 +156,13 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
 
     try:
         # 1️⃣ Menü megnyitása
-        page.wait_for_selector("button[aria-label='További lehetőségek']", timeout=15000)
-        page.click("button[aria-label='További lehetőségek']")
+        page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=15000)
+        page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
         print("📂 Menü megnyitva...")
 
         # 2️⃣ Upscale állapot ellenőrzés
-        disabled = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and @aria-disabled='true']")
-        active = page.locator("//div[@role='menuitem' and contains(., 'Upscale video') and not(@aria-disabled)]")
+        disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
+        active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
         page.wait_for_timeout(random.randint(500, 800))
 
         if disabled.count() > 0:
@@ -152,21 +178,21 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                 page.wait_for_selector("button:has(div:text('HD'))", timeout=UPSCALE_TIMEOUT_MS)
                 print("✅ Upscale kész.")
             except PWTimeout:
-                print("⚠️ Upscale időtúllépés – letöltés upscale nélkül.")
+                print("⚠️  Upscale időtúllépés – letöltés upscale nélkül.")
                 upscale_failures.append(identifier)
 
         # 3️⃣ Menü bezárása
         page.wait_for_timeout(random.randint(300, 500))
 
         # 4️⃣ Letöltés
-        page.wait_for_selector("button[aria-label='Letöltés']", timeout=60000)
-        dl_button = page.locator("button[aria-label='Letöltés']")
-        if not dl_button:
+        dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
+        if dl_button.count() == 0:
             print("❌ Nem találtam Letöltés gombot.")
             return
+        dl_button.first.wait_for(state="visible", timeout=60000)
 
         with page.expect_download() as dl_info:
-            dl_button.click()
+            dl_button.first.click()
         download = dl_info.value
 
         filename = download.suggested_filename or f"video_{index + 1}.mp4"
@@ -213,9 +239,10 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
     finally:
         # 5️⃣ Visszalépés
         try:
-            page.wait_for_timeout(random.randint(100, 300))
-            page.wait_for_selector("button[aria-label='Vissza']:visible", timeout=10000)
-            page.locator("button[aria-label='Vissza']").first.click()
+            back_button = page.locator(BACK_BUTTON_SELECTOR).first
+            back_button.wait_for(state="visible", timeout=10000)
+            page.wait_for_timeout(random.randint(300, 500))
+            back_button.click()
             page.wait_for_selector("div[role='listitem']", timeout=15000)
             print("↩️  Visszatérés a galériába.")
         except:
@@ -380,7 +407,7 @@ def main():
                 raise
         finally:
             if upscale_failures:
-                print("\n⚠️ Az alábbi videók upscale nélkül kerültek letöltésre:")
+                print("\n⚠️  Az alábbi videók upscale nélkül kerültek letöltésre:")
                 for failed in upscale_failures:
                     print(f"   • {failed}")
             else:
