@@ -335,29 +335,42 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
 
         # 0-bájtos letöltés detektálás
         if os.path.getsize(filepath) == 0:
-            print("⚠️  0 bájtos fájl — megpróbálom közvetlen URL-ből letölteni...")
-            url = download.url
-            if url:
-                page_cookies = context.cookies()
-                cookie_jar = {c['name']: c['value'] for c in page_cookies if "grok.com" in c['domain']}
-                headers = ASSET_BASE_HEADERS.copy()
-                headers.update({
-                    "user-agent": USER_AGENT,
-                })
-                try:
-                    r = requests.get(url, stream=True, headers=headers, cookies=cookie_jar, timeout=60)
-                except requests.RequestException as req_err:
-                    record_failure(f"HTTP hiba:\n{COLOR_GRAY}{req_err}{COLOR_RESET}")
-                    return
-                if r.ok:
-                    with open(filepath, "wb") as f:
-                        for chunk in r.iter_content(1024 * 1024):
-                            f.write(chunk)
-                    print(f"📥 Letöltve: {filename} ({os.path.getsize(filepath)} bájt)")
-                else:
-                    record_failure("Közvetlen letöltés sem sikerült.")
-            else:
-                record_failure("Nem ismert az URL.")
+            print("⚠️  0 bájtos fájl — törlöm és megpróbálom alternatív forrásból letölteni...")
+            try:
+                os.remove(filepath)
+            except OSError as remove_err:
+                record_failure(f"Nem tudtam törölni a 0 bájtos fájlt: {remove_err}")
+                return
+
+            video_id = os.path.splitext(identifier)[0]
+            fallback_url = f"https://imagine-public.x.ai/imagine-public/share-videos/{video_id}.mp4?cache=1"
+            print(f"🔁 Alternatív letöltés: {fallback_url}")
+
+            headers = {
+                "user-agent": USER_AGENT,
+                "accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
+                "referer": FAVORITES_URL,
+            }
+
+            try:
+                r = requests.get(fallback_url, stream=True, headers=headers, timeout=60)
+            except requests.RequestException as req_err:
+                record_failure(f"Alternatív letöltés HTTP hiba:\n{COLOR_GRAY}{req_err}{COLOR_RESET}")
+                return
+
+            if not r.ok:
+                record_failure(f"Alternatív letöltés sikertelen: HTTP {r.status_code}")
+                return
+
+            with open(filepath, "wb") as f:
+                for chunk in r.iter_content(1024 * 1024):
+                    f.write(chunk)
+
+            alt_size = os.path.getsize(filepath)
+            if alt_size == 0:
+                record_failure("Alternatív letöltés is 0 bájtos maradt")
+                return
+            print(f"📥 Letöltve alternatív forrásból: {filename} ({alt_size} bájt)")
         else:
             print(f"📥 Letöltve: {filename}")
 
