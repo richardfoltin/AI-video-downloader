@@ -25,7 +25,14 @@ from .playwright_utils import (
 )
 
 
-def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: List[str], download_failures: List[tuple]):
+def process_one_card(
+    page,
+    card,
+    index: int,
+    identifier: str,
+    upscale_failures: List[str],
+    download_failures: List[tuple],
+):
     print(f"\n{t('card_processing', index=index + 1, identifier=identifier)}")
 
     def record_failure(reason: str):
@@ -35,7 +42,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
     for attempt in range(2):
         try:
             card.scroll_into_view_if_needed()
-            card.wait_for(state="visible", timeout=15000)
+            card.wait_for(state="visible", timeout=config.CARD_VISIBILITY_TIMEOUT_MS)
             wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
             card.click()
             print(t("card_click"))
@@ -45,15 +52,17 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                 print(t("card_disappeared_retry"))
                 refreshed = find_card_by_identifier(page, identifier)
                 if refreshed is None:
-                    record_failure("A kártya nem található a kattintáshoz")
+                    record_failure(t("card_not_found_for_clicking"))
                     return
                 card = refreshed
                 continue
-            record_failure("A kártyára kattintás időtúllépett")
+            record_failure(t("card_click_timeout"))
             return
 
     try:
-        page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=15000)
+        page.wait_for_selector(
+            MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS
+        )
         page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
         print(t("menu_opened"))
 
@@ -70,7 +79,9 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
             click_safe_area(page)
             try:
-                page.wait_for_selector("button:has(div:text('HD'))", timeout=config.UPSCALE_TIMEOUT_MS)
+                page.wait_for_selector(
+                    config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS
+                )
                 print(t("upscale_success"))
             except PWTimeout:
                 print(t("upscale_timeout"))
@@ -82,13 +93,18 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         if dl_button.count() == 0:
             record_failure(t("no_download_button"))
             return
-        dl_button.first.wait_for(state="visible", timeout=60000)
+        dl_button.first.wait_for(
+            state="visible", timeout=config.DOWNLOAD_BUTTON_TIMEOUT_MS
+        )
 
         with page.expect_download() as dl_info:
             dl_button.first.click()
         download = dl_info.value
 
-        filename = download.suggested_filename or f"video_{index + 1}.mp4"
+        filename = (
+            download.suggested_filename
+            or config.DEFAULT_FILENAME_PATTERN.format(index=index + 1)
+        )
         filepath = os.path.join(config.DOWNLOAD_DIR, filename)
 
         if os.path.exists(filepath):
@@ -96,7 +112,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             try:
                 os.remove(filepath)
             except OSError as remove_err:
-                record_failure(f"Nem tudtam törölni a régi fájlt: {remove_err}")
+                record_failure(t("delete_existing_failed", error=remove_err))
                 return
 
         download.save_as(filepath)
@@ -123,13 +139,25 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             }
 
             try:
-                response = requests.get(fallback_url, stream=True, headers=headers, timeout=60)
+                response = requests.get(
+                    fallback_url,
+                    stream=True,
+                    headers=headers,
+                    timeout=config.HTTP_REQUEST_TIMEOUT_SEC,
+                )
             except requests.RequestException as req_err:
-                record_failure(t("alternative_download_http_error", error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}"))
+                record_failure(
+                    t(
+                        "alternative_download_http_error",
+                        error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}",
+                    )
+                )
                 return
 
             if not response.ok:
-                record_failure(t("alternative_download_failed", status=response.status_code))
+                record_failure(
+                    t("alternative_download_failed", status=response.status_code)
+                )
                 return
 
             with open(filepath, "wb") as handle:
@@ -145,15 +173,23 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             print(t("download_success", filename=filename))
 
     except Exception as error:
-        record_failure(f"Hiba a(z) {index + 1}. videónál:\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
+        record_failure(
+            t(
+                "video_processing_error",
+                index=index + 1,
+                error=f"{config.COLOR_GRAY}{error}{config.COLOR_RESET}",
+            )
+        )
 
     finally:
         try:
             back_button = page.locator(BACK_BUTTON_SELECTOR).first
-            back_button.wait_for(state="visible", timeout=10000)
+            back_button.wait_for(state="visible", timeout=config.BACK_BUTTON_TIMEOUT_MS)
             wait_with_jitter(page, config.WAIT_AFTER_BACK_BUTTON_MS)
             back_button.click()
-            page.wait_for_selector("div[role='listitem']", timeout=15000)
+            page.wait_for_selector(
+                config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS
+            )
             print(t("back_to_gallery"))
         except Exception:
             print(t("back_failed_continue"))
@@ -165,55 +201,33 @@ def run():
     cookies = cookie_header_to_list(cookie_header, ".grok.com")
 
     with sync_playwright() as playwright:
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--disable-web-security",
-            "--disable-features=IsolateOrigins,site-per-process,Translate,TranslateUI,TranslateSubFrames,LanguageDetection,RendererTranslate",
-            "--disable-translate",
-            "--accept-lang=hu-HU,hu,en-US,en,en-GB",
-        ]
-        browser = playwright.chromium.launch(channel="chrome", headless=config.HEADLESS, args=launch_args)
+        launch_args = config.BROWSER_LAUNCH_ARGS
+        browser = playwright.chromium.launch(
+            channel=config.BROWSER_CHANNEL, headless=config.HEADLESS, args=launch_args
+        )
         context = browser.new_context(
             accept_downloads=True,
             user_agent=config.USER_AGENT,
-            viewport={"width": 1280, "height": 800},
-            locale="en-US",
-            timezone_id="Europe/Budapest",
-            color_scheme="dark",
-            extra_http_headers={
-                "Accept-Language": "hu-HU,hu;q=0.9",
-                "Sec-CH-UA": '"Google Chrome";v="141", "Chromium";v="141", "Not=A?Brand";v="24"',
-                "Sec-CH-UA-Mobile": "?0",
-                "Sec-CH-UA-Platform": '"Windows"',
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Site": "same-origin",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-User": "?1",
-                "Sec-Fetch-Dest": "document",
-            },
+            viewport={"width": config.VIEWPORT_WIDTH, "height": config.VIEWPORT_HEIGHT},
+            locale=config.BROWSER_LOCALE,
+            timezone_id=config.BROWSER_TIMEZONE,
+            color_scheme=config.BROWSER_COLOR_SCHEME,
+            extra_http_headers=config.CONTEXT_HEADERS,
         )
         context.add_cookies(cookies)
         page = context.new_page()
 
-        def asset_header_rewrite(route, request):
-            headers = dict(request.headers)
-            headers.update(config.ASSET_BASE_HEADERS)
-            headers.setdefault("user-agent", config.USER_AGENT)
-            route.continue_(headers=headers)
+        if config.ENABLE_ASSET_ROUTING:
 
-        page.route("https://assets.grok.com/*", asset_header_rewrite)
+            def asset_header_rewrite(route, request):
+                headers = dict(request.headers)
+                headers.update(config.ASSET_BASE_HEADERS)
+                headers.setdefault("user-agent", config.USER_AGENT)
+                route.continue_(headers=headers)
 
-        page.add_init_script(
-            """
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            window.chrome = window.chrome || { runtime: {} };
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['hu-HU', 'hu']});
-            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
-        """
-        )
+            page.route(config.ASSET_URL_PATTERN, asset_header_rewrite)
+
+        page.add_init_script(config.INIT_SCRIPT)
 
         print(t("gallery_opening"))
         response = page.goto(config.FAVORITES_URL, wait_until="domcontentloaded")
@@ -225,12 +239,14 @@ def run():
 
         wait_with_jitter(page, config.INITIAL_PAGE_WAIT_MS)
         try:
-            page.wait_for_selector("div[role='listitem']", timeout=15000)
+            page.wait_for_selector(
+                config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS
+            )
         except PWTimeout:
             print(t("gallery_load_failed"))
             return
 
-        cards_locator = page.locator("//div[contains(@class,'group/media-post-masonry-card')]")
+        cards_locator = page.locator(config.CARDS_XPATH)
         processed_ids = set()
         pending_queue: List[str] = []
         pending_set = set()
@@ -259,8 +275,18 @@ def run():
                         processed_ids.add(identifier)
                         continue
                     if action == "skip_video":
-                        width_txt = f"{media_info.video_width}px" if media_info.video_width else t("video_width_unknown")
-                        print(t("already_downloaded_video", width=width_txt, path=media_info.video_path))
+                        width_txt = (
+                            f"{media_info.video_width}px"
+                            if media_info.video_width
+                            else t("video_width_unknown")
+                        )
+                        print(
+                            t(
+                                "already_downloaded_video",
+                                width=width_txt,
+                                path=media_info.video_path,
+                            )
+                        )
                         processed_ids.add(identifier)
                         continue
 
@@ -286,15 +312,24 @@ def run():
                     scroll_to_load_more(page, direction="down")
                     wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
                     current_count = cards_locator.count()
-                    
-                    if current_count == previous_count and no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS:
+
+                    if (
+                        current_count == previous_count
+                        and no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS
+                    ):
                         print(f"\n{t('processing_complete')}")
                         break
                     continue
                 else:
                     no_new_card_scrolls = 0
 
-                print(t("remaining_videos", count=len(pending_queue), queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}"))
+                print(
+                    t(
+                        "remaining_videos",
+                        count=len(pending_queue),
+                        queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}",
+                    )
+                )
 
                 identifier = pending_queue.pop(0)
                 pending_set.discard(identifier)
@@ -328,7 +363,6 @@ def run():
                     card = found_card
 
                 process_one_card(
-                    context,
                     page,
                     card,
                     processed_count,
@@ -340,7 +374,9 @@ def run():
                 processed_count += 1
                 no_new_card_scrolls = 0
         except Exception as error:
-            print(f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
+            print(
+                f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}"
+            )
             err_text = str(error).lower()
             transient_browser_errors = (
                 "target closed",

@@ -18,16 +18,26 @@ def make_aria_selector(tag: str, labels):
 
 
 def build_menuitem_xpath(texts, disabled: bool):
-    text_conditions = " or ".join([f"contains(normalize-space(.), '{text}')" for text in texts])
+    text_conditions = " or ".join(
+        [f"contains(normalize-space(.), '{text}')" for text in texts]
+    )
     disabled_clause = "@aria-disabled='true'" if disabled else "not(@aria-disabled)"
     return f"//div[@role='menuitem' and ({text_conditions}) and {disabled_clause}]"
 
 
-MORE_OPTIONS_BUTTON_SELECTOR = make_aria_selector("button", localization.MORE_OPTIONS_LABELS)
-DOWNLOAD_BUTTON_SELECTOR = make_aria_selector("button", localization.DOWNLOAD_BUTTON_LABELS)
+MORE_OPTIONS_BUTTON_SELECTOR = make_aria_selector(
+    "button", localization.MORE_OPTIONS_LABELS
+)
+DOWNLOAD_BUTTON_SELECTOR = make_aria_selector(
+    "button", localization.DOWNLOAD_BUTTON_LABELS
+)
 BACK_BUTTON_SELECTOR = make_aria_selector("button", localization.BACK_BUTTON_LABELS)
-UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=True)
-UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=False)
+UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(
+    localization.UPSCALE_MENU_LABELS, disabled=True
+)
+UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(
+    localization.UPSCALE_MENU_LABELS, disabled=False
+)
 
 
 def scroll_to_load_more(page, direction: str = "down"):
@@ -39,7 +49,9 @@ def scroll_to_load_more(page, direction: str = "down"):
     distance = config.MOUSE_SCROLL + jitter
     delta_y = distance if direction == "down" else -distance
     arrow = "⬇️" if direction == "down" else "⬆️"
-    label = t("scroll_direction_down") if direction == "down" else t("scroll_direction_up")
+    label = (
+        t("scroll_direction_down") if direction == "down" else t("scroll_direction_up")
+    )
     print(t("scrolling", direction=label))
     page.mouse.wheel(0, delta_y)
     wait_with_jitter(page, config.SCROLL_PAUSE_MS)
@@ -89,7 +101,7 @@ def xpath_literal(value: str) -> str:
         if segment:
             concat_segments.append(f"'{segment}'")
         if index != len(parts) - 1:
-            concat_segments.append("\"'\"")
+            concat_segments.append('"\'"')
     return "concat(" + ", ".join(concat_segments) + ")"
 
 
@@ -100,7 +112,7 @@ def get_card_identifier(card):
             identifier = str(identifier)
             slash_index = identifier.rfind("/")
             if slash_index != -1 and slash_index + 1 < len(identifier):
-                name = identifier[slash_index + 1:]
+                name = identifier[slash_index + 1 :]
                 question_index = name.find("?")
                 if question_index != -1:
                     name = name[:question_index]

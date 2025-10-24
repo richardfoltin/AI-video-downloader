@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import os
 
-from . import config
-
-MORE_OPTIONS_LABELS = ["További lehetőségek", "More options"]
-DOWNLOAD_BUTTON_LABELS = ["Letöltés", "Download"]
-BACK_BUTTON_LABELS = ["Vissza", "Back"]
-UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
+MORE_OPTIONS_LABELS = ["More options", "További lehetőségek"]
+DOWNLOAD_BUTTON_LABELS = ["Download", "Letöltés"]
+BACK_BUTTON_LABELS = ["Back", "Vissza"]
+UPSCALE_MENU_LABELS = ["Videó felskálázása", "Upscale video"]
 
 MESSAGES = {
     "hu": {
@@ -65,6 +63,11 @@ MESSAGES = {
         "scroll_direction_up": "felfelé",
         "download_error": "❌ Letöltési hiba: {reason}",
         "ffprobe_not_found": "⚠️  ffprobe nem található, a videók felbontását nem tudom ellenőrizni – újra feldolgozom őket.",
+        "empty_cookie_file": "A cookie fájl üres!",
+        "card_not_found_for_clicking": "A kártya nem található a kattintáshoz",
+        "card_click_timeout": "A kártyára kattintás időtúllépett",
+        "delete_existing_failed": "Nem tudtam törölni a régi fájlt: {error}",
+        "video_processing_error": "Hiba a(z) {index}. videónál:\n{error}",
     },
     "en": {
         # General messages
@@ -121,7 +124,12 @@ MESSAGES = {
         "scroll_direction_up": "up",
         "download_error": "❌ Download error: {reason}",
         "ffprobe_not_found": "⚠️  ffprobe not found, cannot check video resolution – will reprocess videos.",
-    }
+        "empty_cookie_file": "The cookie file is empty!",
+        "card_not_found_for_clicking": "Card not found for clicking",
+        "card_click_timeout": "Card click timed out",
+        "delete_existing_failed": "Could not delete existing file: {error}",
+        "video_processing_error": "Error at video {index}:\n{error}",
+    },
 }
 
 
@@ -129,8 +137,8 @@ def get_message(key: str, **kwargs) -> str:
     """Get localized message by key, with optional formatting."""
     lang = os.getenv("LANGUAGE", "hu")
     if lang not in MESSAGES:
-        lang = 'hu'  # fallback to Hungarian
-    
+        lang = "hu"  # fallback to Hungarian
+
     message = MESSAGES[lang].get(key, f"[{key}]")  # fallback to key if not found
     if kwargs:
         try:

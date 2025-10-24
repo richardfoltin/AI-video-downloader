@@ -9,8 +9,10 @@ from .localization import t
 def _resolve_load_dotenv():
     spec = importlib.util.find_spec("dotenv")
     if spec is None:
+
         def _noop():
             print(t("no_dotenv_warning"))
+
         return _noop
     module = importlib.import_module("dotenv")
     return getattr(module, "load_dotenv", lambda: None)
@@ -62,6 +64,66 @@ MAX_SCROLLS_WITHOUT_NEW_CARDS = env_int("MAX_SCROLLS_WITHOUT_NEW_CARDS", 3)
 SEARCH_SCROLL_UP_ATTEMPTS = env_int("SEARCH_SCROLL_UP_ATTEMPTS", 2)
 SEARCH_SCROLL_DOWN_ATTEMPTS = env_int("SEARCH_SCROLL_DOWN_ATTEMPTS", 5)
 
+# Playwright settings
+BROWSER_CHANNEL = os.getenv("BROWSER_CHANNEL", "chrome")
+VIEWPORT_WIDTH = env_int("VIEWPORT_WIDTH", 1280)
+VIEWPORT_HEIGHT = env_int("VIEWPORT_HEIGHT", 800)
+BROWSER_LOCALE = os.getenv("BROWSER_LOCALE", "en-US")
+BROWSER_TIMEZONE = os.getenv("BROWSER_TIMEZONE", "Europe/Paris")
+BROWSER_COLOR_SCHEME = os.getenv("BROWSER_COLOR_SCHEME", "dark")
+
+BROWSER_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--disable-web-security",
+    "--disable-features=IsolateOrigins,site-per-process,Translate,TranslateUI,TranslateSubFrames,LanguageDetection,RendererTranslate",
+    "--disable-translate",
+    "--accept-lang=hu-HU,hu,en-US,en,en-GB",
+]
+
+CONTEXT_HEADERS = {
+    "Accept-Language": "hu-HU,hu;q=0.9",
+    "Sec-CH-UA": '"Google Chrome";v="141", "Chromium";v="141", "Not=A?Brand";v="24"',
+    "Sec-CH-UA-Mobile": "?0",
+    "Sec-CH-UA-Platform": '"Windows"',
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+}
+
+INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+window.chrome = window.chrome || { runtime: {} };
+Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+Object.defineProperty(navigator, 'languages', {get: () => ['hu-HU', 'hu']});
+Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
+"""
+
+# Selectors
+CARDS_XPATH = "//div[contains(@class,'group/media-post-masonry-card')]"
+GALLERY_LISTITEM_SELECTOR = "div[role='listitem']"
+HD_BUTTON_SELECTOR = "button:has(div:text('HD'))"
+
+# Timeouts (in milliseconds)
+CARD_VISIBILITY_TIMEOUT_MS = env_int("CARD_VISIBILITY_TIMEOUT_MS", 15000)
+DOWNLOAD_BUTTON_TIMEOUT_MS = env_int("DOWNLOAD_BUTTON_TIMEOUT_MS", 60000)
+BACK_BUTTON_TIMEOUT_MS = env_int("BACK_BUTTON_TIMEOUT_MS", 10000)
+GALLERY_LOAD_TIMEOUT_MS = env_int("GALLERY_LOAD_TIMEOUT_MS", 15000)
+MORE_OPTIONS_BUTTON_TIMEOUT_MS = env_int("MORE_OPTIONS_BUTTON_TIMEOUT_MS", 15000)
+
+# HTTP timeouts (in seconds)
+HTTP_REQUEST_TIMEOUT_SEC = env_int("HTTP_REQUEST_TIMEOUT_SEC", 60)
+
+# Filename patterns
+DEFAULT_FILENAME_PATTERN = "video_{index}.mp4"
+
+# Asset routing configuration
+ENABLE_ASSET_ROUTING = env_bool("ENABLE_ASSET_ROUTING", True)
+ASSET_URL_PATTERN = os.getenv("ASSET_URL_PATTERN", "https://assets.grok.com/*")
+
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -80,5 +142,3 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
-
-
