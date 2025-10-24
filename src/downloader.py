@@ -16,6 +16,7 @@ from .playwright_utils import (
     MORE_OPTIONS_BUTTON_SELECTOR,
     UPSCALE_MENU_ACTIVE_XPATH,
     UPSCALE_MENU_DISABLED_XPATH,
+    VIDEO_IMAGE_TOGGLE_SELECTOR,
     click_safe_area,
     extract_video_source,
     find_card_by_identifier,
@@ -33,63 +34,6 @@ def process_one_card(
     upscale_failures: List[str],
     download_failures: List[tuple],
 ):
-    # Check if card has video option
-    has_video_option = card.locator(config.VIDEO_IMAGE_TOGGLE_SELECTOR).count() > 0
-
-    if not has_video_option:
-        # Process as image only - download directly without opening card
-        print(f"\n{t('card_processing', index=index + 1, identifier=identifier)} (image)")
-
-        def record_failure(reason: str):
-            print(t("download_error", reason=reason))
-            download_failures.append((identifier, reason))
-
-        try:
-            # Try to find image element in the card
-            img_locator = card.locator("img")
-            if img_locator.count() == 0:
-                record_failure(t("no_image_element"))
-                return
-
-            img_src = img_locator.first.get_attribute("src")
-            if not img_src:
-                record_failure(t("no_image_src"))
-                return
-
-            # Download image using requests
-            import requests
-
-            headers = {
-                "user-agent": config.USER_AGENT,
-                "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-                "referer": config.FAVORITES_URL,
-            }
-
-            filename = f"grok-image-{identifier}.png"
-            filepath = os.path.join(config.DOWNLOAD_DIR, filename)
-
-            if os.path.exists(filepath):
-                print(t("already_exists_overwrite", filename=filename))
-                try:
-                    os.remove(filepath)
-                except OSError as remove_err:
-                    record_failure(t("delete_existing_failed", error=remove_err))
-                    return
-
-            response = requests.get(img_src, headers=headers, timeout=config.HTTP_REQUEST_TIMEOUT_SEC)
-            if not response.ok:
-                record_failure(t("image_download_failed", status=response.status_code))
-                return
-
-            with open(filepath, "wb") as f:
-                f.write(response.content)
-
-            print(t("download_success", filename=filename))
-
-        except Exception as error:
-            record_failure(t("video_processing_error", index=index + 1, error=f"{config.COLOR_GRAY}{error}{config.COLOR_RESET}"))
-
-        return
 
     # Original video processing logic
     print(f"\n{t('card_processing', index=index + 1, identifier=identifier)}")
@@ -118,7 +62,15 @@ def process_one_card(
             record_failure(t("card_click_timeout"))
             return
 
+    # Check if card has video option
     try:
+        page.wait_for_selector(VIDEO_IMAGE_TOGGLE_SELECTOR, timeout=config.VIDEO_IMAGE_TOGGLE_TIMEOUT_MS)
+    except PWTimeout:
+        has_video_option = False
+    else:
+        has_video_option = page.locator(VIDEO_IMAGE_TOGGLE_SELECTOR).count() > 0
+
+    if has_video_option:
         page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS)
         page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
         print(t("menu_opened"))
@@ -143,6 +95,13 @@ def process_one_card(
                 upscale_failures.append(identifier)
 
         wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
+    else:
+        print(t("no_video_option_skip_upscale"))
+
+    try:
+        if not has_video_option and config.SKIP_IMAGES:
+            print(t("skipping_no_video_option", identifier=identifier))
+            return
 
         dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
         if dl_button.count() == 0:
@@ -292,10 +251,7 @@ def run():
                     # Found any new card (whether we process it or skip it)
                     any_new_cards_found = True
 
-                    # Check if card has video option
-                    has_video_option = card.locator(config.VIDEO_IMAGE_TOGGLE_SELECTOR).count() > 0
-
-                    action, media_info = decide_media_action(identifier, has_video_option)
+                    action, media_info = decide_media_action(identifier)
 
                     if action == "skip_image":
                         print(t("already_downloaded_image", path=media_info.image_path))
@@ -306,15 +262,9 @@ def run():
                         print(t("already_downloaded_video", width=width_txt, path=media_info.video_path))
                         processed_ids.add(identifier)
                         continue
-                    if action == "skip_no_video":
-                        print(t("skipping_no_video_option", identifier=identifier))
-                        processed_ids.add(identifier)
-                        continue
-                    if action == "process_image":
-                        # Add to pending queue for image download
-                        pending_queue.append(identifier)
-                        pending_set.add(identifier)
-                        continue
+
+                    pending_queue.append(identifier)
+                    pending_set.add(identifier)
 
                 if not pending_queue:
                     no_new_card_scrolls = 0 if any_new_cards_found else no_new_card_scrolls + 1

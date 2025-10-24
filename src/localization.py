@@ -72,6 +72,7 @@ MESSAGES = {
         "no_image_element": "Nem találtam kép elemet a kártyában",
         "no_image_src": "Nem találtam kép URL-t a kártyában",
         "image_download_failed": "Kép letöltés sikertelen: HTTP {status}",
+        "no_video_option_skip_upscale": "⏭️  Nincs videó opció – kihagyom az upscale lépést",
     },
     "en": {
         # General messages
@@ -137,6 +138,7 @@ MESSAGES = {
         "no_image_element": "Image element not found in card",
         "no_image_src": "Image URL not found in card",
         "image_download_failed": "Image download failed: HTTP {status}",
+        "no_video_option_skip_upscale": "⏭️  No video option – skipping upscale step",
     },
 }
 

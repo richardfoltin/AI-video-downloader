@@ -109,7 +109,6 @@ SKIP_IMAGES = env_bool("SKIP_IMAGES", False)
 CARDS_XPATH = "//div[contains(@class,'group/media-post-masonry-card')]"
 GALLERY_LISTITEM_SELECTOR = "div[role='listitem']"
 HD_BUTTON_SELECTOR = "button:has(div:text('HD'))"
-VIDEO_IMAGE_TOGGLE_SELECTOR = "div[aria-label='Text alignment'][class*='flex'][class*='rounded-full']"
 
 # Timeouts (in milliseconds)
 CARD_VISIBILITY_TIMEOUT_MS = env_int("CARD_VISIBILITY_TIMEOUT_MS", 15000)
@@ -117,6 +116,7 @@ DOWNLOAD_BUTTON_TIMEOUT_MS = env_int("DOWNLOAD_BUTTON_TIMEOUT_MS", 60000)
 BACK_BUTTON_TIMEOUT_MS = env_int("BACK_BUTTON_TIMEOUT_MS", 10000)
 GALLERY_LOAD_TIMEOUT_MS = env_int("GALLERY_LOAD_TIMEOUT_MS", 15000)
 MORE_OPTIONS_BUTTON_TIMEOUT_MS = env_int("MORE_OPTIONS_BUTTON_TIMEOUT_MS", 15000)
+VIDEO_IMAGE_TOGGLE_TIMEOUT_MS = env_int("VIDEO_IMAGE_TOGGLE_TIMEOUT_MS", 1000)
 
 # HTTP timeouts (in seconds)
 HTTP_REQUEST_TIMEOUT_SEC = env_int("HTTP_REQUEST_TIMEOUT_SEC", 60)

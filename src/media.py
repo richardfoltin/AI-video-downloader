@@ -94,20 +94,8 @@ def analyze_existing_media(image_filename: str) -> MediaCheckResult:
     )
 
 
-def decide_media_action(image_filename: str, has_video_option: bool = True) -> Tuple[str, MediaCheckResult]:
+def decide_media_action(image_filename: str) -> Tuple[str, MediaCheckResult]:
     info = analyze_existing_media(image_filename)
-
-    # If no video option available in the card
-    if not has_video_option:
-        if not config.SKIP_IMAGES:
-            # Download image if it doesn't exist
-            if not info.image_exists:
-                return "process_image", info
-            else:
-                return "skip_image", info
-        else:
-            # Skip this card entirely if no video option and not downloading images
-            return "skip_no_video", info
 
     # Original logic for cards with video option
     if info.image_exists and not info.video_exists:
