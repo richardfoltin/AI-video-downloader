@@ -251,13 +251,17 @@ def find_card_by_identifier(page, target_identifier: str):
 # --- Fő feldolgozó ---
 
 
-def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: list):
+def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: list, download_failures: list):
     print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
     card.scroll_into_view_if_needed()
     card.wait_for(state="visible", timeout=15000)
     page.wait_for_timeout(random.randint(500, 800))
     card.click()
     print("🖱️  Megnyitva...")
+
+    def record_failure(reason: str):
+        print(f"❌  Letöltési hiba: {reason}")
+        download_failures.append((identifier, reason))
 
     try:
         # 1️⃣ Menü megnyitása
@@ -292,7 +296,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         # 4️⃣ Letöltés
         dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
         if dl_button.count() == 0:
-            print("❌ Nem találtam Letöltés gombot.")
+            record_failure("❌ Nem találtam Letöltés gombot.")
             return
         dl_button.first.wait_for(state="visible", timeout=60000)
 
@@ -309,7 +313,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             try:
                 os.remove(filepath)
             except OSError as remove_err:
-                print(f"❌ Nem tudtam törölni a régi fájlt: {remove_err}")
+                record_failure(f"❌ Nem tudtam törölni a régi fájlt: {remove_err}")
                 return
 
         download.save_as(filepath)
@@ -328,7 +332,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                 try:
                     r = requests.get(url, stream=True, headers=headers, cookies=cookie_jar, timeout=60)
                 except requests.RequestException as req_err:
-                    print(f"❌ HTTP hiba: {req_err}")
+                    record_failure(f"❌ HTTP hiba: {req_err}")
                     return
                 if r.ok:
                     with open(filepath, "wb") as f:
@@ -336,14 +340,14 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                             f.write(chunk)
                     print(f"📥 Letöltve: {filename} ({os.path.getsize(filepath)} bájt)")
                 else:
-                    print("❌ Közvetlen letöltés sem sikerült.")
+                    record_failure("❌ Közvetlen letöltés sem sikerült.")
             else:
-                print("❌ Nem ismert az URL.")
+                record_failure("❌ Nem ismert az URL.")
         else:
             print(f"📥 Letöltve: {filename}")
 
     except Exception as e:
-        print(f"❌ Hiba a(z) {index + 1}. videónál:\n{COLOR_GRAY}{e}{COLOR_RESET}")
+        record_failure(f"❌ Hiba a(z) {index + 1}. videónál:\n{COLOR_GRAY}{e}{COLOR_RESET}")
 
     finally:
         # 5️⃣ Visszalépés
@@ -443,6 +447,7 @@ def main():
         processed_count = 0
         idle_cycles = 0
         upscale_failures = []
+        download_failures = []
 
         try:
             while True:
@@ -523,7 +528,15 @@ def main():
                         continue
                     card = found_card
 
-                process_one_card(context, page, card, processed_count, identifier, upscale_failures)
+                process_one_card(
+                    context,
+                    page,
+                    card,
+                    processed_count,
+                    identifier,
+                    upscale_failures,
+                    download_failures,
+                )
                 processed_ids.add(identifier)
                 processed_count += 1
                 idle_cycles = 0
@@ -546,6 +559,13 @@ def main():
                     print(f"   • {failed}")
             else:
                 print("\n✅ Minden videó sikeresen upscale-lve lett a letöltés előtt.")
+
+            if download_failures:
+                print("\n❗ Letöltési hibák listája:")
+                for ident, reason in download_failures:
+                    print(f"   • {ident}: {reason}")
+            else:
+                print("\n✅ Nem történt letöltési hiba.")
             try:
                 # context.close()
                 browser.close()
