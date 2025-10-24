@@ -144,14 +144,68 @@ def process_one_card(
 
             print(t("alternative_download", url=fallback_url))
 
+            # First attempt: download via Playwright context (carries browser cookies)
+            try:
+                api_resp = page.context.request.get(fallback_url, headers={
+                    "user-agent": config.USER_AGENT,
+                    "accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
+                    "referer": config.FAVORITES_URL,
+                    # Many CDNs require Range for media assets; request full stream
+                    "range": "bytes=0-",
+                })
+                if api_resp.ok:
+                    content = api_resp.body()
+                    with open(filepath, "wb") as handle:
+                        handle.write(content)
+
+                    alt_size = os.path.getsize(filepath)
+                    if alt_size == 0:
+                        record_failure(t("alternative_download_zero_byte"))
+                        return
+                    print(t("alternative_download_success", filename=filename, size=alt_size))
+                    # Done via Playwright, skip requests fallback
+                    return
+            except Exception as req_err:
+                # Fall through to requests-based attempt
+                pass
+
+            # Second attempt: force a browser-driven download via an injected <a download> element
+            try:
+                with page.expect_download() as dl_info:
+                    page.evaluate(
+                        "(url) => { const a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }",
+                        fallback_url,
+                    )
+                d2 = dl_info.value
+                d2.save_as(filepath)
+                if os.path.getsize(filepath) > 0:
+                    print(t("alternative_download_success", filename=filename, size=os.path.getsize(filepath)))
+                    return
+            except Exception:
+                # Continue to requests fallback
+                pass
+
+            # Third attempt: requests with Cookie header from cookie file
             headers = {
                 "user-agent": config.USER_AGENT,
                 "accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
                 "referer": config.FAVORITES_URL,
+                "range": "bytes=0-",
             }
-
             try:
-                response = requests.get(fallback_url, stream=True, headers=headers, timeout=config.HTTP_REQUEST_TIMEOUT_SEC)
+                try:
+                    cookie_header = load_cookie_header(config.COOKIE_FILE)
+                except Exception:
+                    cookie_header = None
+                if cookie_header:
+                    headers["cookie"] = cookie_header
+
+                response = requests.get(
+                    fallback_url,
+                    stream=True,
+                    headers=headers,
+                    timeout=config.HTTP_REQUEST_TIMEOUT_SEC,
+                )
             except requests.RequestException as req_err:
                 record_failure(t("alternative_download_http_error", error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}"))
                 return
