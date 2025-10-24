@@ -89,24 +89,9 @@ def cookie_header_to_list(header: str, domain: str):
 
 
 def scroll_to_load_more(page):
-    page.mouse.wheel(0, 1000)
-    page.wait_for_timeout(random.randint(100, 400) + SCROLL_PAUSE_MS)
     print("⬇️ Görgetés...")
-
-
-def ensure_cards_loaded(page):
-    idle = 0
-    prev = 0
-    while True:
-        count = page.locator("//div[contains(@class,'group/media-post-masonry-card')]").count()
-        if count == prev:
-            idle += 1
-            if idle >= MAX_IDLE_SCROLL_CYCLES:
-                return
-        else:
-            idle = 0
-        prev = count
-        scroll_to_load_more(page)
+    page.mouse.wheel(0, random.randint(900, 1400))
+    page.wait_for_timeout(random.randint(300, 600) + SCROLL_PAUSE_MS)
 
 
 def click_safe_area(page):
@@ -174,7 +159,7 @@ def find_card_by_identifier(page, target_identifier: str):
     )
     if img_locator.count() == 0:
         return None
-    return img_locator.first.locator("ancestor::div[contains(@class,'group/media-post-masonry-card')]").first
+    return img_locator.first.locator("xpath=ancestor::div[contains(@class,'group/media-post-masonry-card')]").first
 
 # --- Fő feldolgozó ---
 
@@ -353,7 +338,7 @@ def main():
             print("ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.")
             return
 
-        page.wait_for_timeout(10000)
+        page.wait_for_timeout(5000)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
@@ -412,26 +397,28 @@ def main():
 
                     continue
 
+                print(f"🔢 Hátralévő megtalált videók ({len(pending_queue)}): {COLOR_GRAY}{pending_queue}{COLOR_RESET}")
+
                 identifier = pending_queue.pop(0)
                 pending_set.discard(identifier)
 
-                print(f"🔢 Hátralévő megtalált videók száma: {len(pending_queue) + 1}")
-
-                if media_already_downloaded(identifier):
-                    print(f"⏭️  Feldolgozás kihagyva, már letöltve: {identifier}")
-                    processed_ids.add(identifier)
-                    idle_cycles = 0
-                    page.wait_for_timeout(random.randint(300, 500))
-                    continue
                 card = find_card_by_identifier(page, identifier)
 
                 if card is None:
-                    # Kártya jelenleg nincs a DOM-ban; tegyük vissza a sor végére és várjunk
-                    if identifier not in pending_set:
-                        pending_queue.append(identifier)
-                        pending_set.add(identifier)
-                    page.wait_for_timeout(random.randint(300, 500))
-                    continue
+                    print("🔄 Kártya nincs a DOM-ban, görgetés lefelé...")
+                    retries = 0
+                    found_card = None
+                    while retries < MAX_IDLE_SCROLL_CYCLES and found_card is None:
+                        scroll_to_load_more(page)
+                        page.wait_for_timeout(random.randint(500, 800))
+                        found_card = find_card_by_identifier(page, identifier)
+                        retries += 1
+                    if found_card is None:
+                        print(f"⚠️  {identifier} kártya nem található, kihagyás.")
+                        processed_ids.add(identifier)
+                        idle_cycles = 0
+                        continue
+                    card = found_card
 
                 process_one_card(context, page, card, processed_count, identifier, upscale_failures)
                 processed_ids.add(identifier)
