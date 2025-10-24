@@ -16,7 +16,7 @@ DOWNLOAD_DIR = "downloads"
 HEADLESS = False
 SCROLL_PAUSE_MS = 400
 MAX_IDLE_SCROLL_CYCLES = 10
-UPSCALE_TIMEOUT_MS = 0.5 * 60 * 1000  # 30 másodperc
+UPSCALE_TIMEOUT_MS = 20 * 1000  # 20 másodperc
 UPSCALE_VIDEO_WIDTH = 928
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -97,7 +97,7 @@ def cookie_header_to_list(header: str, domain: str):
 
 def scroll_to_load_more(page):
     print("⬇️  Görgetés...")
-    page.mouse.wheel(0, random.randint(900, 1400))
+    page.mouse.wheel(0, random.randint(400, 500))
     page.wait_for_timeout(random.randint(300, 600) + SCROLL_PAUSE_MS)
 
 
@@ -253,15 +253,30 @@ def find_card_by_identifier(page, target_identifier: str):
 
 def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: list, download_failures: list):
     print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
-    card.scroll_into_view_if_needed()
-    card.wait_for(state="visible", timeout=15000)
-    page.wait_for_timeout(random.randint(500, 800))
-    card.click()
-    print("🖱️  Megnyitva...")
 
     def record_failure(reason: str):
-        print(f"❌  Letöltési hiba: {reason}")
+        print(f"❌ Letöltési hiba: {reason}")
         download_failures.append((identifier, reason))
+
+    for attempt in range(2):
+        try:
+            card.scroll_into_view_if_needed()
+            card.wait_for(state="visible", timeout=15000)
+            page.wait_for_timeout(random.randint(500, 800))
+            card.click()
+            print("🖱️  Megnyitva...")
+            break
+        except PWTimeout:
+            if attempt == 0:
+                print("♻️  A kártya eltűnt, újrakeresem...")
+                refreshed = find_card_by_identifier(page, identifier)
+                if refreshed is None:
+                    record_failure("A kártya nem található a kattintáshoz")
+                    return
+                card = refreshed
+                continue
+            record_failure("A kártyára kattintás időtúllépett")
+            return
 
     try:
         # 1️⃣ Menü megnyitása
@@ -296,7 +311,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         # 4️⃣ Letöltés
         dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
         if dl_button.count() == 0:
-            record_failure("❌ Nem találtam Letöltés gombot.")
+            record_failure("Nem találtam Letöltés gombot.")
             return
         dl_button.first.wait_for(state="visible", timeout=60000)
 
@@ -313,14 +328,14 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             try:
                 os.remove(filepath)
             except OSError as remove_err:
-                record_failure(f"❌ Nem tudtam törölni a régi fájlt: {remove_err}")
+                record_failure(f"Nem tudtam törölni a régi fájlt: {remove_err}")
                 return
 
         download.save_as(filepath)
 
         # 0-bájtos letöltés detektálás
         if os.path.getsize(filepath) == 0:
-            print("⚠️ 0 bájtos fájl — megpróbálom közvetlen URL-ből letölteni...")
+            print("⚠️  0 bájtos fájl — megpróbálom közvetlen URL-ből letölteni...")
             url = download.url
             if url:
                 page_cookies = context.cookies()
@@ -332,7 +347,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                 try:
                     r = requests.get(url, stream=True, headers=headers, cookies=cookie_jar, timeout=60)
                 except requests.RequestException as req_err:
-                    record_failure(f"❌ HTTP hiba: {req_err}")
+                    record_failure(f"HTTP hiba:\n{COLOR_GRAY}{req_err}{COLOR_RESET}")
                     return
                 if r.ok:
                     with open(filepath, "wb") as f:
@@ -340,14 +355,14 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                             f.write(chunk)
                     print(f"📥 Letöltve: {filename} ({os.path.getsize(filepath)} bájt)")
                 else:
-                    record_failure("❌ Közvetlen letöltés sem sikerült.")
+                    record_failure("Közvetlen letöltés sem sikerült.")
             else:
-                record_failure("❌ Nem ismert az URL.")
+                record_failure("Nem ismert az URL.")
         else:
             print(f"📥 Letöltve: {filename}")
 
     except Exception as e:
-        record_failure(f"❌ Hiba a(z) {index + 1}. videónál:\n{COLOR_GRAY}{e}{COLOR_RESET}")
+        record_failure(f"Hiba a(z) {index + 1}. videónál:\n{COLOR_GRAY}{e}{COLOR_RESET}")
 
     finally:
         # 5️⃣ Visszalépés
