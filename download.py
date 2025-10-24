@@ -14,7 +14,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 COOKIE_FILE = "cookies.txt"
 DOWNLOAD_DIR = "downloads"
 HEADLESS = False
-SCROLL_PAUSE_MS = 400
+SCROLL_PAUSE_MS = 800
 MAX_IDLE_SCROLL_CYCLES = 10
 UPSCALE_TIMEOUT_MS = 20 * 1000  # 20 másodperc
 UPSCALE_VIDEO_WIDTH = 928
@@ -98,7 +98,7 @@ def cookie_header_to_list(header: str, domain: str):
 def scroll_to_load_more(page):
     print("⬇️  Görgetés...")
     page.mouse.wheel(0, random.randint(400, 500))
-    page.wait_for_timeout(random.randint(300, 600) + SCROLL_PAUSE_MS)
+    page.wait_for_timeout(random.randint(0, 200) + SCROLL_PAUSE_MS)
 
 
 def click_safe_area(page):
@@ -106,6 +106,32 @@ def click_safe_area(page):
     x = int(min(max(viewport["width"] * 0.6, 200), viewport["width"] - 80))
     y = int(min(max(viewport["height"] * 0.2, 120), viewport["height"] - 120))
     page.mouse.click(x, y)
+
+
+def extract_video_source(page) -> Optional[str]:
+    selectors = [
+        "video#hd-video[src]",
+        "video#sd-video[src]",
+        "video[src]",
+    ]
+    for selector in selectors:
+        try:
+            page.wait_for_selector(selector, timeout=3000)
+        except PWTimeout:
+            continue
+
+        locator = page.locator(selector)
+        if locator.count() == 0:
+            continue
+
+        try:
+            src = locator.first.get_attribute("src")
+        except Exception:
+            src = None
+
+        if src:
+            return src
+    return None
 
 
 @dataclass
@@ -335,15 +361,18 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
 
         # 0-bájtos letöltés detektálás
         if os.path.getsize(filepath) == 0:
-            print("⚠️  0 bájtos fájl — törlöm és megpróbálom alternatív forrásból letölteni...")
+            print("⚠️  0 bájtos fájl — törlöm és megpróbálom a megnyitott kártyából letölteni...")
             try:
                 os.remove(filepath)
             except OSError as remove_err:
                 record_failure(f"Nem tudtam törölni a 0 bájtos fájlt: {remove_err}")
                 return
 
-            video_id = os.path.splitext(identifier)[0]
-            fallback_url = f"https://imagine-public.x.ai/imagine-public/share-videos/{video_id}.mp4?cache=1"
+            fallback_url = extract_video_source(page)
+            if not fallback_url:
+                record_failure("Nem találtam videó URL-t a kártya DOM-jában")
+                return
+
             print(f"🔁 Alternatív letöltés: {fallback_url}")
 
             headers = {
@@ -514,23 +543,12 @@ def main():
 
                 if not pending_queue:
                     idle_cycles += 1
-                    page.wait_for_timeout(random.randint(300, 500))
+                    if idle_cycles == 1:
+                        print("🌀 Nincs feldolgozandó kártya, görgetek tovább...")
+                    elif idle_cycles % MAX_IDLE_SCROLL_CYCLES == 0:
+                        print(f"🌀 További görgetés ({idle_cycles} próbálkozás) ...")
 
-                    if idle_cycles < MAX_IDLE_SCROLL_CYCLES:
-                        continue
-
-                    prev_count = card_count
                     scroll_to_load_more(page)
-                    page.wait_for_timeout(random.randint(300, 500))
-                    new_count = cards_locator.count()
-                    if new_count > prev_count:
-                        idle_cycles = 0
-                        continue
-
-                    if idle_cycles >= MAX_IDLE_SCROLL_CYCLES * 2:
-                        print("✅ Az összes elérhető kártya feldolgozva.")
-                        break
-
                     continue
 
                 print(f"🔢 Hátralévő megtalált videók ({len(pending_queue)}): {COLOR_GRAY}{pending_queue}{COLOR_RESET}")
@@ -546,7 +564,6 @@ def main():
                     found_card = None
                     while retries < MAX_IDLE_SCROLL_CYCLES and found_card is None:
                         scroll_to_load_more(page)
-                        page.wait_for_timeout(random.randint(500, 800))
                         found_card = find_card_by_identifier(page, identifier)
                         retries += 1
                     if found_card is None:
