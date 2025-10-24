@@ -38,7 +38,7 @@ COLOR_RESET = "\033[0m" if USE_COLOR else ""
 MORE_OPTIONS_LABELS = ["További lehetőségek", "More options"]
 DOWNLOAD_BUTTON_LABELS = ["Letöltés", "Download"]
 BACK_BUTTON_LABELS = ["Vissza", "Back"]
-UPSCALE_MENU_LABELS = ["Upscale video", "Videó skálázása"]
+UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
 
 
 def make_aria_selector(tag: str, labels):
@@ -109,6 +109,22 @@ def ensure_cards_loaded(page):
         scroll_to_load_more(page)
 
 
+def click_safe_area(page):
+    viewport = page.viewport_size or {"width": 1280, "height": 800}
+    x = int(min(max(viewport["width"] * 0.6, 200), viewport["width"] - 80))
+    y = int(min(max(viewport["height"] * 0.2, 120), viewport["height"] - 120))
+    page.mouse.click(x, y)
+
+
+def media_already_downloaded(image_filename: str) -> bool:
+    name_without_ext, _ = os.path.splitext(image_filename)
+    candidate_paths = [
+        os.path.join(DOWNLOAD_DIR, f"grok-video-{name_without_ext}.mp4"),
+        os.path.join(DOWNLOAD_DIR, f"grok-image-{name_without_ext}.png"),
+    ]
+    return any(os.path.exists(path) for path in candidate_paths)
+
+
 def get_filename_from_url(url: str, index: int):
     """Próbáljuk az URL-ből kinyerni a Grok video ID-t, fallback az index."""
     m = re.search(r"([a-f0-9-]{36})", url)
@@ -135,14 +151,30 @@ def get_card_identifier(card):
     return "No ID"
 
 
-def find_card_by_identifier(cards_locator, target_identifier: str):
-    """Keressük meg a kártya lokátort azonosító alapján."""
-    card_count = cards_locator.count()
-    for idx in range(card_count):
-        card = cards_locator.nth(idx)
-        if get_card_identifier(card) == target_identifier:
-            return card
-    return None
+def xpath_literal(value: str) -> str:
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    concat_segments = []
+    for index, segment in enumerate(parts):
+        if segment:
+            concat_segments.append(f"'{segment}'")
+        if index != len(parts) - 1:
+            concat_segments.append("\"'\"")
+    return "concat(" + ", ".join(concat_segments) + ")"
+
+
+def find_card_by_identifier(page, target_identifier: str):
+    """Keressük meg a kártyát közvetlenül az img src alapján, függetlenül az aktuális DOM sorrendtől."""
+    literal = xpath_literal(target_identifier)
+    img_locator = page.locator(
+        f"//div[contains(@class,'group/media-post-masonry-card')]//img[contains(@src, {literal})]"
+    )
+    if img_locator.count() == 0:
+        return None
+    return img_locator.first.locator("ancestor::div[contains(@class,'group/media-post-masonry-card')]").first
 
 # --- Fő feldolgozó ---
 
@@ -150,6 +182,7 @@ def find_card_by_identifier(cards_locator, target_identifier: str):
 def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: list):
     print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
     card.scroll_into_view_if_needed()
+    card.wait_for(state="visible", timeout=15000)
     page.wait_for_timeout(random.randint(500, 800))
     card.click()
     print("🖱️  Megnyitva...")
@@ -167,12 +200,12 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
 
         if disabled.count() > 0:
             print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
-            page.mouse.click(200, 100)
+            click_safe_area(page)
         else:
             print("🕐 Upscale indítása...")
             active.first.click()
             page.wait_for_timeout(random.randint(300, 500))
-            page.mouse.click(200, 100)
+            click_safe_area(page)
             try:
                 # várjuk a HD ikon megjelenését
                 page.wait_for_selector("button:has(div:text('HD'))", timeout=UPSCALE_TIMEOUT_MS)
@@ -247,7 +280,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             print("↩️  Visszatérés a galériába.")
         except:
             print("⚠️  Nem sikerült visszalépni, de folytatom.")
-        page.wait_for_timeout(random.randint(1000, 1300))
+        page.wait_for_timeout(random.randint(300, 500))
 
 
 def main():
@@ -262,20 +295,19 @@ def main():
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process,Translate,TranslateUI,TranslateSubFrames,LanguageDetection,RendererTranslate',
             '--disable-translate',
-            '--accept-lang=hu-HU,hu',
+            '--accept-lang=hu-HU,hu,en-US,en,en-GB',
         ]
-        try:
-            browser = p.chromium.launch(channel="chrome", headless=HEADLESS, args=launch_args)
-        except Exception:
-            try:
-                browser = p.chromium.launch(channel="msedge", headless=HEADLESS, args=launch_args)
-            except Exception:
-                browser = p.chromium.launch(headless=HEADLESS, args=launch_args)
+        # context = p.chromium.launch_persistent_context(
+        #     user_data_dir="user-data",
+        #     args=launch_args,
+        #     locale="en-US"
+        # )
+        browser = p.chromium.launch(channel="chrome", headless=HEADLESS, args=launch_args)
         context = browser.new_context(
             accept_downloads=True,
             user_agent=USER_AGENT,
             viewport={"width": 1280, "height": 800},
-            locale="hu-HU",
+            locale="en-US",
             timezone_id="Europe/Budapest",
             color_scheme="dark",
             extra_http_headers={
@@ -348,6 +380,10 @@ def main():
                         continue
                     if identifier in processed_ids or identifier in pending_set:
                         continue
+                    if media_already_downloaded(identifier):
+                        print(f"⏭️  Már megtalált letöltés: {identifier}")
+                        processed_ids.add(identifier)
+                        continue
                     pending_queue.append(identifier)
                     pending_set.add(identifier)
                     new_cards_added = True
@@ -357,14 +393,14 @@ def main():
 
                 if not pending_queue:
                     idle_cycles += 1
-                    page.wait_for_timeout(400)
+                    page.wait_for_timeout(random.randint(300, 500))
 
                     if idle_cycles < MAX_IDLE_SCROLL_CYCLES:
                         continue
 
                     prev_count = card_count
                     scroll_to_load_more(page)
-                    page.wait_for_timeout(400)
+                    page.wait_for_timeout(random.randint(300, 500))
                     new_count = cards_locator.count()
                     if new_count > prev_count:
                         idle_cycles = 0
@@ -378,17 +414,25 @@ def main():
 
                 identifier = pending_queue.pop(0)
                 pending_set.discard(identifier)
-                card = find_card_by_identifier(cards_locator, identifier)
+
+                print(f"🔢 Hátralévő megtalált videók száma: {len(pending_queue) + 1}")
+
+                if media_already_downloaded(identifier):
+                    print(f"⏭️  Feldolgozás kihagyva, már letöltve: {identifier}")
+                    processed_ids.add(identifier)
+                    idle_cycles = 0
+                    page.wait_for_timeout(random.randint(300, 500))
+                    continue
+                card = find_card_by_identifier(page, identifier)
 
                 if card is None:
                     # Kártya jelenleg nincs a DOM-ban; tegyük vissza a sor végére és várjunk
                     if identifier not in pending_set:
                         pending_queue.append(identifier)
                         pending_set.add(identifier)
-                    page.wait_for_timeout(300)
+                    page.wait_for_timeout(random.randint(300, 500))
                     continue
 
-                print(f"🔢 Hátralévő megtalált videók száma: {len(pending_queue)}")
                 process_one_card(context, page, card, processed_count, identifier, upscale_failures)
                 processed_ids.add(identifier)
                 processed_count += 1
@@ -413,6 +457,7 @@ def main():
             else:
                 print("\n✅ Minden videó sikeresen upscale-lve lett a letöltés előtt.")
             try:
+                # context.close()
                 browser.close()
             except Exception:
                 pass
