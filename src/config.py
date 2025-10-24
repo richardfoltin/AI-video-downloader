@@ -102,10 +102,14 @@ Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
 Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
 """
 
+# Media download options
+SKIP_IMAGES = env_bool("SKIP_IMAGES", False)
+
 # Selectors
 CARDS_XPATH = "//div[contains(@class,'group/media-post-masonry-card')]"
 GALLERY_LISTITEM_SELECTOR = "div[role='listitem']"
 HD_BUTTON_SELECTOR = "button:has(div:text('HD'))"
+VIDEO_IMAGE_TOGGLE_SELECTOR = "div[aria-label='Text alignment'][class*='flex'][class*='rounded-full']"
 
 # Timeouts (in milliseconds)
 CARD_VISIBILITY_TIMEOUT_MS = env_int("CARD_VISIBILITY_TIMEOUT_MS", 15000)

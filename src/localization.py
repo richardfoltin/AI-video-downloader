@@ -68,6 +68,10 @@ MESSAGES = {
         "card_click_timeout": "A kártyára kattintás időtúllépett",
         "delete_existing_failed": "Nem tudtam törölni a régi fájlt: {error}",
         "video_processing_error": "Hiba a(z) {index}. videónál:\n{error}",
+        "skipping_no_video_option": "⏭️  {identifier} kártya kihagyása – nincs videó opció",
+        "no_image_element": "Nem találtam kép elemet a kártyában",
+        "no_image_src": "Nem találtam kép URL-t a kártyában",
+        "image_download_failed": "Kép letöltés sikertelen: HTTP {status}",
     },
     "en": {
         # General messages
@@ -129,6 +133,10 @@ MESSAGES = {
         "card_click_timeout": "Card click timed out",
         "delete_existing_failed": "Could not delete existing file: {error}",
         "video_processing_error": "Error at video {index}:\n{error}",
+        "skipping_no_video_option": "⏭️  Skipping {identifier} card – no video option available",
+        "no_image_element": "Image element not found in card",
+        "no_image_src": "Image URL not found in card",
+        "image_download_failed": "Image download failed: HTTP {status}",
     },
 }
 

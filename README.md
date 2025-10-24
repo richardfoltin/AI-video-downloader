@@ -51,6 +51,7 @@ An intelligent video downloader that automatically downloads and upscales your f
    LANGUAGE=en  # or hu
    COOKIE_FILE=cookies.txt
    DOWNLOAD_DIR=downloads
+   SKIP_IMAGES=false
 
    # Browser settings
    HEADLESS=false
