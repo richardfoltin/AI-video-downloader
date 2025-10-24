@@ -60,9 +60,7 @@ def process_one_card(
             return
 
     try:
-        page.wait_for_selector(
-            MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS
-        )
+        page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS)
         page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
         print(t("menu_opened"))
 
@@ -79,9 +77,7 @@ def process_one_card(
             wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
             click_safe_area(page)
             try:
-                page.wait_for_selector(
-                    config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS
-                )
+                page.wait_for_selector(config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS)
                 print(t("upscale_success"))
             except PWTimeout:
                 print(t("upscale_timeout"))
@@ -93,9 +89,7 @@ def process_one_card(
         if dl_button.count() == 0:
             record_failure(t("no_download_button"))
             return
-        dl_button.first.wait_for(
-            state="visible", timeout=config.DOWNLOAD_BUTTON_TIMEOUT_MS
-        )
+        dl_button.first.wait_for(state="visible", timeout=config.DOWNLOAD_BUTTON_TIMEOUT_MS)
 
         with page.expect_download() as dl_info:
             dl_button.first.click()
@@ -139,25 +133,13 @@ def process_one_card(
             }
 
             try:
-                response = requests.get(
-                    fallback_url,
-                    stream=True,
-                    headers=headers,
-                    timeout=config.HTTP_REQUEST_TIMEOUT_SEC,
-                )
+                response = requests.get(fallback_url, stream=True, headers=headers, timeout=config.HTTP_REQUEST_TIMEOUT_SEC)
             except requests.RequestException as req_err:
-                record_failure(
-                    t(
-                        "alternative_download_http_error",
-                        error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}",
-                    )
-                )
+                record_failure(t("alternative_download_http_error", error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}"))
                 return
 
             if not response.ok:
-                record_failure(
-                    t("alternative_download_failed", status=response.status_code)
-                )
+                record_failure(t("alternative_download_failed", status=response.status_code))
                 return
 
             with open(filepath, "wb") as handle:
@@ -173,13 +155,7 @@ def process_one_card(
             print(t("download_success", filename=filename))
 
     except Exception as error:
-        record_failure(
-            t(
-                "video_processing_error",
-                index=index + 1,
-                error=f"{config.COLOR_GRAY}{error}{config.COLOR_RESET}",
-            )
-        )
+        record_failure(t("video_processing_error", index=index + 1, error=f"{config.COLOR_GRAY}{error}{config.COLOR_RESET}"))
 
     finally:
         try:
@@ -187,9 +163,7 @@ def process_one_card(
             back_button.wait_for(state="visible", timeout=config.BACK_BUTTON_TIMEOUT_MS)
             wait_with_jitter(page, config.WAIT_AFTER_BACK_BUTTON_MS)
             back_button.click()
-            page.wait_for_selector(
-                config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS
-            )
+            page.wait_for_selector(config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS)
             print(t("back_to_gallery"))
         except Exception:
             print(t("back_failed_continue"))
@@ -202,18 +176,8 @@ def run():
 
     with sync_playwright() as playwright:
         launch_args = config.BROWSER_LAUNCH_ARGS
-        browser = playwright.chromium.launch(
-            channel=config.BROWSER_CHANNEL, headless=config.HEADLESS, args=launch_args
-        )
-        context = browser.new_context(
-            accept_downloads=True,
-            user_agent=config.USER_AGENT,
-            viewport={"width": config.VIEWPORT_WIDTH, "height": config.VIEWPORT_HEIGHT},
-            locale=config.BROWSER_LOCALE,
-            timezone_id=config.BROWSER_TIMEZONE,
-            color_scheme=config.BROWSER_COLOR_SCHEME,
-            extra_http_headers=config.CONTEXT_HEADERS,
-        )
+        browser = playwright.chromium.launch(channel=config.BROWSER_CHANNEL, headless=config.HEADLESS, args=launch_args)
+        context = browser.new_context(accept_downloads=True, user_agent=config.USER_AGENT, viewport={"width": config.VIEWPORT_WIDTH, "height": config.VIEWPORT_HEIGHT}, locale=config.BROWSER_LOCALE, timezone_id=config.BROWSER_TIMEZONE, color_scheme=config.BROWSER_COLOR_SCHEME, extra_http_headers=config.CONTEXT_HEADERS)
         context.add_cookies(cookies)
         page = context.new_page()
 
@@ -239,9 +203,7 @@ def run():
 
         wait_with_jitter(page, config.INITIAL_PAGE_WAIT_MS)
         try:
-            page.wait_for_selector(
-                config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS
-            )
+            page.wait_for_selector(config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS)
         except PWTimeout:
             print(t("gallery_load_failed"))
             return
@@ -258,7 +220,7 @@ def run():
         try:
             while True:
                 card_count = cards_locator.count()
-                new_cards_added = False
+                any_new_cards_found = False
 
                 for idx in range(card_count):
                     card = cards_locator.nth(idx)
@@ -268,6 +230,9 @@ def run():
                     if identifier in processed_ids or identifier in pending_set:
                         continue
 
+                    # Found any new card (whether we process it or skip it)
+                    any_new_cards_found = True
+
                     action, media_info = decide_media_action(identifier)
 
                     if action == "skip_image":
@@ -275,61 +240,32 @@ def run():
                         processed_ids.add(identifier)
                         continue
                     if action == "skip_video":
-                        width_txt = (
-                            f"{media_info.video_width}px"
-                            if media_info.video_width
-                            else t("video_width_unknown")
-                        )
-                        print(
-                            t(
-                                "already_downloaded_video",
-                                width=width_txt,
-                                path=media_info.video_path,
-                            )
-                        )
+                        width_txt = (f"{media_info.video_width}px" if media_info.video_width else t("video_width_unknown"))
+                        print(t("already_downloaded_video", width=width_txt, path=media_info.video_path))
                         processed_ids.add(identifier)
                         continue
 
                     pending_queue.append(identifier)
                     pending_set.add(identifier)
-                    new_cards_added = True
 
                 if not pending_queue:
-                    if new_cards_added:
-                        no_new_card_scrolls = 0
-                    else:
-                        no_new_card_scrolls += 1
+                    no_new_card_scrolls = 0 if any_new_cards_found else no_new_card_scrolls + 1
 
-                    attempt_txt = (
-                        f" ({no_new_card_scrolls}/{config.MAX_SCROLLS_WITHOUT_NEW_CARDS})"
-                        if no_new_card_scrolls
-                        else ""
-                    )
-                    print(f"{t('no_cards_scroll')}{attempt_txt}")
-
-                    previous_count = cards_locator.count()
-                    wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
-                    scroll_to_load_more(page, direction="down")
-                    wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
-                    current_count = cards_locator.count()
-
-                    if (
-                        current_count == previous_count
-                        and no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS
-                    ):
+                    if no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS:
                         print(f"\n{t('processing_complete')}")
                         break
-                    continue
+                    else:
+                        attempt_txt = f" ({no_new_card_scrolls}/{config.MAX_SCROLLS_WITHOUT_NEW_CARDS})" if no_new_card_scrolls else ""
+                        print(f"{t('no_cards_scroll')}{attempt_txt}")
+
+                        wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
+                        scroll_to_load_more(page, direction="down")
+                        wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
+                        continue
                 else:
                     no_new_card_scrolls = 0
 
-                print(
-                    t(
-                        "remaining_videos",
-                        count=len(pending_queue),
-                        queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}",
-                    )
-                )
+                print(t("remaining_videos", count=len(pending_queue), queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}"))
 
                 identifier = pending_queue.pop(0)
                 pending_set.discard(identifier)
@@ -362,21 +298,12 @@ def run():
 
                     card = found_card
 
-                process_one_card(
-                    page,
-                    card,
-                    processed_count,
-                    identifier,
-                    upscale_failures,
-                    download_failures,
-                )
+                process_one_card(page, card, processed_count, identifier, upscale_failures, download_failures)
                 processed_ids.add(identifier)
                 processed_count += 1
                 no_new_card_scrolls = 0
         except Exception as error:
-            print(
-                f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}"
-            )
+            print(f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
             err_text = str(error).lower()
             transient_browser_errors = (
                 "target closed",
