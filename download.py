@@ -1,5 +1,9 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+from dataclasses import dataclass
+from typing import Optional, Tuple
+import json
 import os
+import subprocess
 import sys
 import re
 import requests
@@ -13,6 +17,7 @@ HEADLESS = False
 SCROLL_PAUSE_MS = 400
 MAX_IDLE_SCROLL_CYCLES = 10
 UPSCALE_TIMEOUT_MS = 0.5 * 60 * 1000  # 30 másodperc
+UPSCALE_VIDEO_WIDTH = 928
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -32,6 +37,8 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
+
+_FFPROBE_AVAILABLE: Optional[bool] = None
 
 # --- UI szövegkonstansok és segédfüggvények ---
 
@@ -101,13 +108,93 @@ def click_safe_area(page):
     page.mouse.click(x, y)
 
 
-def media_already_downloaded(image_filename: str) -> bool:
+@dataclass
+class MediaCheckResult:
+    image_path: str
+    image_exists: bool
+    video_path: str
+    video_exists: bool
+    video_width: Optional[int]
+
+
+def probe_video_width(path: str) -> Optional[int]:
+    global _FFPROBE_AVAILABLE
+
+    if _FFPROBE_AVAILABLE is False:
+        return None
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width",
+                "-of",
+                "json",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        if _FFPROBE_AVAILABLE is not False:
+            _FFPROBE_AVAILABLE = False
+            print("⚠️  ffprobe nem található, a videók felbontását nem tudom ellenőrizni – újra feldolgozom őket.")
+        return None
+    except subprocess.CalledProcessError:
+        return None
+    else:
+        _FFPROBE_AVAILABLE = True
+
+    try:
+        payload = json.loads(result.stdout)
+        streams = payload.get("streams", [])
+        if streams:
+            width_value = streams[0].get("width")
+            if width_value is not None:
+                return int(width_value)
+    except (ValueError, KeyError, TypeError, IndexError):
+        return None
+    return None
+
+
+def analyze_existing_media(image_filename: str) -> MediaCheckResult:
     name_without_ext, _ = os.path.splitext(image_filename)
-    candidate_paths = [
-        os.path.join(DOWNLOAD_DIR, f"grok-video-{name_without_ext}.mp4"),
-        os.path.join(DOWNLOAD_DIR, f"grok-image-{name_without_ext}.png"),
-    ]
-    return any(os.path.exists(path) for path in candidate_paths)
+    image_path = os.path.join(DOWNLOAD_DIR, f"grok-image-{name_without_ext}.png")
+    video_path = os.path.join(DOWNLOAD_DIR, f"grok-video-{name_without_ext}.mp4")
+
+    image_exists = os.path.exists(image_path)
+    video_exists = os.path.exists(video_path)
+    video_width = probe_video_width(video_path) if video_exists else None
+
+    return MediaCheckResult(
+        image_path=image_path,
+        image_exists=image_exists,
+        video_path=video_path,
+        video_exists=video_exists,
+        video_width=video_width,
+    )
+
+
+def decide_media_action(image_filename: str) -> Tuple[str, MediaCheckResult]:
+    info = analyze_existing_media(image_filename)
+
+    if info.image_exists and not info.video_exists:
+        return "skip_image", info
+
+    if info.video_exists:
+        if info.video_width is None:
+            return "process", info
+        if info.video_width >= UPSCALE_VIDEO_WIDTH:
+            return "skip_video", info
+        return "process", info
+
+    return "process", info
 
 
 def get_filename_from_url(url: str, index: int):
@@ -365,8 +452,17 @@ def main():
                         continue
                     if identifier in processed_ids or identifier in pending_set:
                         continue
-                    if media_already_downloaded(identifier):
-                        print(f"⏭️  Már megtalált letöltés: {identifier}")
+                    action, media_info = decide_media_action(identifier)
+                    if action != "process":
+                        if action == "skip_image":
+                            print(f"⏭️  Már lementett kép: {media_info.image_path}")
+                        else:
+                            width_txt = (
+                                f"{media_info.video_width}px"
+                                if media_info.video_width
+                                else "ismeretlen"
+                            )
+                            print(f"⏭️  Már létező videó ({width_txt}): {media_info.video_path}")
                         processed_ids.add(identifier)
                         continue
                     pending_queue.append(identifier)
