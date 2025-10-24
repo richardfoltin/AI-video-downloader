@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from . import config
+from .localization import t
 
 _FFPROBE_AVAILABLE: Optional[bool] = None
 
@@ -56,7 +57,7 @@ def probe_video_width(path: str) -> Optional[int]:
     if payload_text is None:
         if _FFPROBE_AVAILABLE is not False:
             _FFPROBE_AVAILABLE = False
-            print("⚠️  ffprobe nem található, a videók felbontását nem tudom ellenőrizni – újra feldolgozom őket.")
+            print(t("ffprobe_not_found"))
         return None
     if payload_text == "":
         return None

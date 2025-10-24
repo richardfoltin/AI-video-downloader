@@ -4,6 +4,8 @@ import random
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from . import config
+from .localization import t
+from src import localization
 
 
 def wait_with_jitter(page, base_ms: int):
@@ -21,11 +23,11 @@ def build_menuitem_xpath(texts, disabled: bool):
     return f"//div[@role='menuitem' and ({text_conditions}) and {disabled_clause}]"
 
 
-MORE_OPTIONS_BUTTON_SELECTOR = make_aria_selector("button", config.MORE_OPTIONS_LABELS)
-DOWNLOAD_BUTTON_SELECTOR = make_aria_selector("button", config.DOWNLOAD_BUTTON_LABELS)
-BACK_BUTTON_SELECTOR = make_aria_selector("button", config.BACK_BUTTON_LABELS)
-UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(config.UPSCALE_MENU_LABELS, disabled=True)
-UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(config.UPSCALE_MENU_LABELS, disabled=False)
+MORE_OPTIONS_BUTTON_SELECTOR = make_aria_selector("button", localization.MORE_OPTIONS_LABELS)
+DOWNLOAD_BUTTON_SELECTOR = make_aria_selector("button", localization.DOWNLOAD_BUTTON_LABELS)
+BACK_BUTTON_SELECTOR = make_aria_selector("button", localization.BACK_BUTTON_LABELS)
+UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=True)
+UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=False)
 
 
 def scroll_to_load_more(page, direction: str = "down"):
@@ -37,8 +39,8 @@ def scroll_to_load_more(page, direction: str = "down"):
     distance = config.MOUSE_SCROLL + jitter
     delta_y = distance if direction == "down" else -distance
     arrow = "⬇️" if direction == "down" else "⬆️"
-    label = "lefelé" if direction == "down" else "felfelé"
-    print(f"{arrow}  Görgetés {label}...")
+    label = t("scroll_direction_down") if direction == "down" else t("scroll_direction_up")
+    print(t("scrolling", direction=label))
     page.mouse.wheel(0, delta_y)
     wait_with_jitter(page, config.SCROLL_PAUSE_MS)
 
@@ -106,7 +108,7 @@ def get_card_identifier(card):
                     return name
             return identifier
     except Exception:
-        print("❌ Hiba a videó azonosító kinyerésekor.")
+        print(t("card_identifier_error"))
     return "No ID"
 
 

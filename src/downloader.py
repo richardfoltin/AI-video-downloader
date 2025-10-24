@@ -8,6 +8,7 @@ from playwright.sync_api import TimeoutError as PWTimeout, sync_playwright
 
 from . import config
 from .cookies import cookie_header_to_list, load_cookie_header
+from .localization import t
 from .media import decide_media_action
 from .playwright_utils import (
     BACK_BUTTON_SELECTOR,
@@ -25,10 +26,10 @@ from .playwright_utils import (
 
 
 def process_one_card(context, page, card, index: int, identifier: str, upscale_failures: List[str], download_failures: List[tuple]):
-    print(f"\n🎬 {index + 1}. ({identifier}) videó feldolgozása...")
+    print(f"\n{t('card_processing', index=index + 1, identifier=identifier)}")
 
     def record_failure(reason: str):
-        print(f"❌ Letöltési hiba: {reason}")
+        print(t("download_error", reason=reason))
         download_failures.append((identifier, reason))
 
     for attempt in range(2):
@@ -37,11 +38,11 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             card.wait_for(state="visible", timeout=15000)
             wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
             card.click()
-            print("🖱️  Megnyitva...")
+            print(t("card_click"))
             break
         except PWTimeout:
             if attempt == 0:
-                print("♻️  A kártya eltűnt, újrakeresem...")
+                print(t("card_disappeared_retry"))
                 refreshed = find_card_by_identifier(page, identifier)
                 if refreshed is None:
                     record_failure("A kártya nem található a kattintáshoz")
@@ -54,32 +55,32 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
     try:
         page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=15000)
         page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
-        print("📂 Menü megnyitva...")
+        print(t("menu_opened"))
 
         disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
         active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
         wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
 
         if disabled.count() > 0:
-            print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
+            print(t("already_upscaled"))
             click_safe_area(page)
         else:
-            print("🕐 Upscale indítása...")
+            print(t("upscale_start"))
             active.first.click()
             wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
             click_safe_area(page)
             try:
                 page.wait_for_selector("button:has(div:text('HD'))", timeout=config.UPSCALE_TIMEOUT_MS)
-                print("✅ Upscale kész.")
+                print(t("upscale_success"))
             except PWTimeout:
-                print("⚠️  Upscale időtúllépés – letöltés upscale nélkül.")
+                print(t("upscale_timeout"))
                 upscale_failures.append(identifier)
 
         wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
 
         dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
         if dl_button.count() == 0:
-            record_failure("Nem találtam Letöltés gombot.")
+            record_failure(t("no_download_button"))
             return
         dl_button.first.wait_for(state="visible", timeout=60000)
 
@@ -91,7 +92,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         filepath = os.path.join(config.DOWNLOAD_DIR, filename)
 
         if os.path.exists(filepath):
-            print(f"🟡 Már létezik ({filename}), felülírom.")
+            print(t("already_exists_overwrite", filename=filename))
             try:
                 os.remove(filepath)
             except OSError as remove_err:
@@ -101,19 +102,19 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         download.save_as(filepath)
 
         if os.path.getsize(filepath) == 0:
-            print("⚠️  0 bájtos fájl — törlöm és megpróbálom a megnyitott kártyából letölteni...")
+            print(t("zero_byte_file_delete_retry"))
             try:
                 os.remove(filepath)
             except OSError as remove_err:
-                record_failure(f"Nem tudtam törölni a 0 bájtos fájlt: {remove_err}")
+                record_failure(t("zero_byte_file_delete_failed", error=remove_err))
                 return
 
             fallback_url = extract_video_source(page)
             if not fallback_url:
-                record_failure("Nem találtam videó URL-t a kártya DOM-jában")
+                record_failure(t("video_src_not_found"))
                 return
 
-            print(f"🔁 Alternatív letöltés: {fallback_url}")
+            print(t("alternative_download", url=fallback_url))
 
             headers = {
                 "user-agent": config.USER_AGENT,
@@ -124,11 +125,11 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             try:
                 response = requests.get(fallback_url, stream=True, headers=headers, timeout=60)
             except requests.RequestException as req_err:
-                record_failure(f"Alternatív letöltés HTTP hiba:\n{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}")
+                record_failure(t("alternative_download_http_error", error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}"))
                 return
 
             if not response.ok:
-                record_failure(f"Alternatív letöltés sikertelen: HTTP {response.status_code}")
+                record_failure(t("alternative_download_failed", status=response.status_code))
                 return
 
             with open(filepath, "wb") as handle:
@@ -137,11 +138,11 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
 
             alt_size = os.path.getsize(filepath)
             if alt_size == 0:
-                record_failure("Alternatív letöltés is 0 bájtos maradt")
+                record_failure(t("alternative_download_zero_byte"))
                 return
-            print(f"📥 Letöltve alternatív forrásból: {filename} ({alt_size} bájt)")
+            print(t("alternative_download_success", filename=filename, size=alt_size))
         else:
-            print(f"📥 Letöltve: {filename}")
+            print(t("download_success", filename=filename))
 
     except Exception as error:
         record_failure(f"Hiba a(z) {index + 1}. videónál:\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
@@ -153,9 +154,9 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
             wait_with_jitter(page, config.WAIT_AFTER_BACK_BUTTON_MS)
             back_button.click()
             page.wait_for_selector("div[role='listitem']", timeout=15000)
-            print("↩️  Visszatérés a galériába.")
+            print(t("back_to_gallery"))
         except Exception:
-            print("⚠️  Nem sikerült visszalépni, de folytatom.")
+            print(t("back_failed_continue"))
         wait_with_jitter(page, config.WAIT_AFTER_BACK_BUTTON_MS)
 
 
@@ -214,19 +215,19 @@ def run():
         """
         )
 
-        print("🌐 Galéria megnyitása...")
+        print(t("gallery_opening"))
         response = page.goto(config.FAVORITES_URL, wait_until="domcontentloaded")
 
         if response and response.status == 403:
-            print("❌ 403 Forbidden — valószínűleg a cookie érvénytelen vagy a böngésző fingerprint blokkolt.")
-            print("ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.")
+            print(t("forbidden_error"))
+            print(t("forbidden_help"))
             return
 
         wait_with_jitter(page, config.INITIAL_PAGE_WAIT_MS)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
-            print("❌ Nem sikerült betölteni a galériát – ellenőrizd a cookie fájlt.")
+            print(t("gallery_load_failed"))
             return
 
         cards_locator = page.locator("//div[contains(@class,'group/media-post-masonry-card')]")
@@ -254,12 +255,12 @@ def run():
                     action, media_info = decide_media_action(identifier)
 
                     if action == "skip_image":
-                        print(f"⏭️  Már lementett kép: {media_info.image_path}")
+                        print(t("already_downloaded_image", path=media_info.image_path))
                         processed_ids.add(identifier)
                         continue
                     if action == "skip_video":
-                        width_txt = f"{media_info.video_width}px" if media_info.video_width else "ismeretlen"
-                        print(f"⏭️  Már létező videó ({width_txt}): {media_info.video_path}")
+                        width_txt = f"{media_info.video_width}px" if media_info.video_width else t("video_width_unknown")
+                        print(t("already_downloaded_video", width=width_txt, path=media_info.video_path))
                         processed_ids.add(identifier)
                         continue
 
@@ -278,7 +279,7 @@ def run():
                         if no_new_card_scrolls
                         else ""
                     )
-                    print(f"🌀 Nincs feldolgozandó kártya, görgetek tovább...{attempt_txt}")
+                    print(f"{t('no_cards_scroll')}{attempt_txt}")
 
                     previous_count = cards_locator.count()
                     wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
@@ -287,13 +288,13 @@ def run():
                     current_count = cards_locator.count()
                     
                     if current_count == previous_count and no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS:
-                        print("\n🎉 Kész – minden videó feldolgozva.")
+                        print(f"\n{t('processing_complete')}")
                         break
                     continue
                 else:
                     no_new_card_scrolls = 0
 
-                print(f"🔢 Hátralévő megtalált videók ({len(pending_queue)}): {config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}")
+                print(t("remaining_videos", count=len(pending_queue), queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}"))
 
                 identifier = pending_queue.pop(0)
                 pending_set.discard(identifier)
@@ -301,7 +302,7 @@ def run():
                 card = find_card_by_identifier(page, identifier)
 
                 if card is None:
-                    print(f"� {identifier} kártya keresése görgetésekkel...")
+                    print(t("card_search_scroll", identifier=identifier))
                     found_card = None
 
                     for _ in range(config.SEARCH_SCROLL_UP_ATTEMPTS):
@@ -318,8 +319,8 @@ def run():
                                 break
 
                     if found_card is None:
-                        reason = "A kártya nem található a görgetések után"
-                        print(f"⚠️  {identifier} kártya nem található, kihagyás.")
+                        reason = t("card_not_found_reason")
+                        print(t("card_not_found_after_scroll", identifier=identifier))
                         download_failures.append((identifier, reason))
                         processed_ids.add(identifier)
                         continue
@@ -339,7 +340,7 @@ def run():
                 processed_count += 1
                 no_new_card_scrolls = 0
         except Exception as error:
-            print(f"❌ Folyamat megszakadt:\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
+            print(f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
             err_text = str(error).lower()
             transient_browser_errors = (
                 "target closed",
@@ -350,18 +351,18 @@ def run():
                 raise
         finally:
             if upscale_failures:
-                print("\n⚠️  Az alábbi videók upscale nélkül kerültek letöltésre:")
+                print(f"\n{t('upscale_warnings')}")
                 for failed in upscale_failures:
                     print(f"   • {failed}")
             else:
-                print("\n✅ Minden videó sikeresen upscale-lve lett a letöltés előtt.")
+                print(f"\n{t('no_upscale_warnings')}")
 
             if download_failures:
-                print("\n❗ Letöltési hibák listája:")
+                print(f"\n{t('download_errors')}")
                 for ident, reason in download_failures:
                     print(f"   • {ident}: {reason}")
             else:
-                print("\n✅ Nem történt letöltési hiba.")
+                print(f"\n{t('no_download_errors')}")
             try:
                 browser.close()
             except Exception:

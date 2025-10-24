@@ -1,4 +1,4 @@
-from ai_video_downloader import main
+from src import main
 
 
 if __name__ == "__main__":

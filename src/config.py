@@ -3,12 +3,14 @@ import importlib.util
 import os
 import sys
 
+from .localization import t
+
 
 def _resolve_load_dotenv():
     spec = importlib.util.find_spec("dotenv")
     if spec is None:
         def _noop():
-            print("⚠️  A python-dotenv csomag nincs telepítve, .env fájl nem kerül betöltésre.")
+            print(t("no_dotenv_warning"))
         return _noop
     module = importlib.import_module("dotenv")
     return getattr(module, "load_dotenv", lambda: None)
@@ -32,7 +34,7 @@ def env_int(key: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        print(f"⚠️  Érvénytelen egész szám a(z) {key} változóban, az alapértelmezett értéket használom.")
+        print(t("invalid_int_config", key=key))
         return default
 
 
@@ -44,6 +46,7 @@ USER_AGENT = os.getenv(
 COOKIE_FILE = os.getenv("COOKIE_FILE", "cookies.txt")
 DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
 HEADLESS = env_bool("HEADLESS", False)
+LANGUAGE = os.getenv("LANGUAGE", "en")
 SCROLL_PAUSE_MS = env_int("SCROLL_PAUSE_MS", 800)
 UPSCALE_TIMEOUT_MS = env_int("UPSCALE_TIMEOUT_MS", 20 * 1000)
 UPSCALE_VIDEO_WIDTH = env_int("UPSCALE_VIDEO_WIDTH", 928)
@@ -78,7 +81,4 @@ USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
 
-MORE_OPTIONS_LABELS = ["További lehetőségek", "More options"]
-DOWNLOAD_BUTTON_LABELS = ["Letöltés", "Download"]
-BACK_BUTTON_LABELS = ["Vissza", "Back"]
-UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
+
