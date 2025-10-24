@@ -234,7 +234,7 @@ def run():
         pending_queue: List[str] = []
         pending_set = set()
         processed_count = 0
-        idle_cycles = 0
+        no_new_card_scrolls = 0
         upscale_failures: List[str] = []
         download_failures: List[tuple] = []
 
@@ -267,19 +267,31 @@ def run():
                     pending_set.add(identifier)
                     new_cards_added = True
 
-                if new_cards_added:
-                    idle_cycles = 0
-
                 if not pending_queue:
-                    idle_cycles += 1
-                    if idle_cycles == 1:
-                        print("🌀 Nincs feldolgozandó kártya, görgetek tovább...")
-                    elif idle_cycles % config.MAX_IDLE_SCROLL_CYCLES == 0:
-                        print(f"🌀 További görgetés ({idle_cycles} próbálkozás) ...")
+                    if new_cards_added:
+                        no_new_card_scrolls = 0
+                    else:
+                        no_new_card_scrolls += 1
 
+                    attempt_txt = (
+                        f" ({no_new_card_scrolls}/{config.MAX_SCROLLS_WITHOUT_NEW_CARDS})"
+                        if no_new_card_scrolls
+                        else ""
+                    )
+                    print(f"🌀 Nincs feldolgozandó kártya, görgetek tovább...{attempt_txt}")
+
+                    previous_count = cards_locator.count()
                     wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
-                    scroll_to_load_more(page)
+                    scroll_to_load_more(page, direction="down")
+                    wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)
+                    current_count = cards_locator.count()
+                    
+                    if current_count == previous_count and no_new_card_scrolls >= config.MAX_SCROLLS_WITHOUT_NEW_CARDS:
+                        print("\n🎉 Kész – minden videó feldolgozva.")
+                        break
                     continue
+                else:
+                    no_new_card_scrolls = 0
 
                 print(f"🔢 Hátralévő megtalált videók ({len(pending_queue)}): {config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}")
 
@@ -289,18 +301,29 @@ def run():
                 card = find_card_by_identifier(page, identifier)
 
                 if card is None:
-                    print("🔄 Kártya nincs a DOM-ban, görgetés lefelé...")
-                    retries = 0
+                    print(f"� {identifier} kártya keresése görgetésekkel...")
                     found_card = None
-                    while retries < config.MAX_IDLE_SCROLL_CYCLES and found_card is None:
-                        scroll_to_load_more(page)
+
+                    for _ in range(config.SEARCH_SCROLL_UP_ATTEMPTS):
+                        scroll_to_load_more(page, direction="up")
                         found_card = find_card_by_identifier(page, identifier)
-                        retries += 1
+                        if found_card:
+                            break
+
                     if found_card is None:
+                        for _ in range(config.SEARCH_SCROLL_DOWN_ATTEMPTS):
+                            scroll_to_load_more(page, direction="down")
+                            found_card = find_card_by_identifier(page, identifier)
+                            if found_card:
+                                break
+
+                    if found_card is None:
+                        reason = "A kártya nem található a görgetések után"
                         print(f"⚠️  {identifier} kártya nem található, kihagyás.")
+                        download_failures.append((identifier, reason))
                         processed_ids.add(identifier)
-                        idle_cycles = 0
                         continue
+
                     card = found_card
 
                 process_one_card(
@@ -314,9 +337,7 @@ def run():
                 )
                 processed_ids.add(identifier)
                 processed_count += 1
-                idle_cycles = 0
-
-            print("\n🎉 Kész – minden videó feldolgozva.")
+                no_new_card_scrolls = 0
         except Exception as error:
             print(f"❌ Folyamat megszakadt:\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
             err_text = str(error).lower()

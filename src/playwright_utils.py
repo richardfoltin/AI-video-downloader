@@ -28,9 +28,18 @@ UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(config.UPSCALE_MENU_LABELS, d
 UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(config.UPSCALE_MENU_LABELS, disabled=False)
 
 
-def scroll_to_load_more(page):
-    print("⬇️  Görgetés...")
-    page.mouse.wheel(0, config.MOUSE_SCROLL + random.randint(0, config.MOUSE_SCROLL_JITTER_MS))
+def scroll_to_load_more(page, direction: str = "down"):
+    direction = (direction or "down").lower()
+    if direction not in {"down", "up"}:
+        direction = "down"
+
+    jitter = random.randint(0, config.MOUSE_SCROLL_JITTER_MS)
+    distance = config.MOUSE_SCROLL + jitter
+    delta_y = distance if direction == "down" else -distance
+    arrow = "⬇️" if direction == "down" else "⬆️"
+    label = "lefelé" if direction == "down" else "felfelé"
+    print(f"{arrow}  Görgetés {label}...")
+    page.mouse.wheel(0, delta_y)
     wait_with_jitter(page, config.SCROLL_PAUSE_MS)
 
 

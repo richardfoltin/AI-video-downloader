@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 
 def load_cookie_header(path: str) -> str:
     with open(path, "r", encoding="utf-8") as handle:
