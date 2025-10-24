@@ -8,16 +8,63 @@ import sys
 import re
 import requests
 import random
+import importlib
 
-FAVORITES_URL = "https://grok.com/imagine/favorites"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
-COOKIE_FILE = "cookies.txt"
-DOWNLOAD_DIR = "downloads"
-HEADLESS = False
-SCROLL_PAUSE_MS = 800
-MAX_IDLE_SCROLL_CYCLES = 10
-UPSCALE_TIMEOUT_MS = 20 * 1000  # 20 másodperc
-UPSCALE_VIDEO_WIDTH = 928
+
+def _resolve_load_dotenv():
+    spec = importlib.util.find_spec("dotenv")
+    if spec is None:
+        def _noop():
+            print("⚠️  A python-dotenv csomag nincs telepítve, .env fájlok nem kerülnek betöltésre.")
+        return _noop
+    module = importlib.import_module("dotenv")
+    return getattr(module, "load_dotenv", lambda: None)
+
+
+load_dotenv = _resolve_load_dotenv()
+
+
+load_dotenv()
+
+
+def env_bool(key: str, default: bool) -> bool:
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(key: str, default: int) -> int:
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"⚠️  Érvénytelen egész szám a(z) {key} változóban, az alapértelmezett értéket használom.")
+        return default
+
+
+FAVORITES_URL = os.getenv("FAVORITES_URL", "https://grok.com/imagine/favorites")
+USER_AGENT = os.getenv(
+    "USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+)
+COOKIE_FILE = os.getenv("COOKIE_FILE", "cookies.txt")
+DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
+HEADLESS = env_bool("HEADLESS", False)
+SCROLL_PAUSE_MS = env_int("SCROLL_PAUSE_MS", 800)
+MAX_IDLE_SCROLL_CYCLES = env_int("MAX_IDLE_SCROLL_CYCLES", 10)
+UPSCALE_TIMEOUT_MS = env_int("UPSCALE_TIMEOUT_MS", 20 * 1000)  # 20 másodperc
+UPSCALE_VIDEO_WIDTH = env_int("UPSCALE_VIDEO_WIDTH", 928)
+MOUSE_SCROLL = env_int("MOUSE_SCROLL", 400)
+MOUSE_SCROLL_JITTER_MS = env_int("MOUSE_SCROLL_JITTER_MS", 100)
+WAIT_JITTER_MS = env_int("WAIT_JITTER_MS", 200)
+WAIT_AFTER_CARD_SCROLL_MS = env_int("WAIT_AFTER_CARD_SCROLL_MS", 600)
+WAIT_AFTER_MENU_INTERACTION_MS = env_int("WAIT_AFTER_MENU_INTERACTION_MS", 400)
+WAIT_AFTER_BACK_BUTTON_MS = env_int("WAIT_AFTER_BACK_BUTTON_MS", 400)
+WAIT_IDLE_LOOP_MS = env_int("WAIT_IDLE_LOOP_MS", 300)
+INITIAL_PAGE_WAIT_MS = env_int("INITIAL_PAGE_WAIT_MS", 5000)
 ASSET_BASE_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-language": "hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -95,10 +142,14 @@ def cookie_header_to_list(header: str, domain: str):
     return cookies
 
 
+def wait_with_jitter(page, base_ms: int):
+    page.wait_for_timeout(base_ms + random.randint(0, WAIT_JITTER_MS))
+
+
 def scroll_to_load_more(page):
     print("⬇️  Görgetés...")
-    page.mouse.wheel(0, random.randint(400, 500))
-    page.wait_for_timeout(random.randint(0, 200) + SCROLL_PAUSE_MS)
+    page.mouse.wheel(0, MOUSE_SCROLL + random.randint(0, MOUSE_SCROLL_JITTER_MS))
+    wait_with_jitter(page, SCROLL_PAUSE_MS)
 
 
 def click_safe_area(page):
@@ -288,7 +339,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         try:
             card.scroll_into_view_if_needed()
             card.wait_for(state="visible", timeout=15000)
-            page.wait_for_timeout(random.randint(500, 800))
+            wait_with_jitter(page, WAIT_AFTER_CARD_SCROLL_MS)
             card.click()
             print("🖱️  Megnyitva...")
             break
@@ -313,7 +364,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         # 2️⃣ Upscale állapot ellenőrzés
         disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
         active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
-        page.wait_for_timeout(random.randint(500, 800))
+        wait_with_jitter(page, WAIT_AFTER_CARD_SCROLL_MS)
 
         if disabled.count() > 0:
             print("🟢 Már upscale-elve van, kihagyom az upscale lépést.")
@@ -321,7 +372,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         else:
             print("🕐 Upscale indítása...")
             active.first.click()
-            page.wait_for_timeout(random.randint(300, 500))
+            wait_with_jitter(page, WAIT_AFTER_MENU_INTERACTION_MS)
             click_safe_area(page)
             try:
                 # várjuk a HD ikon megjelenését
@@ -332,7 +383,7 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
                 upscale_failures.append(identifier)
 
         # 3️⃣ Menü bezárása
-        page.wait_for_timeout(random.randint(300, 500))
+        wait_with_jitter(page, WAIT_AFTER_MENU_INTERACTION_MS)
 
         # 4️⃣ Letöltés
         dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
@@ -411,13 +462,13 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         try:
             back_button = page.locator(BACK_BUTTON_SELECTOR).first
             back_button.wait_for(state="visible", timeout=10000)
-            page.wait_for_timeout(random.randint(300, 500))
+            wait_with_jitter(page, WAIT_AFTER_BACK_BUTTON_MS)
             back_button.click()
             page.wait_for_selector("div[role='listitem']", timeout=15000)
             print("↩️  Visszatérés a galériába.")
         except:
             print("⚠️  Nem sikerült visszalépni, de folytatom.")
-        page.wait_for_timeout(random.randint(300, 500))
+        wait_with_jitter(page, WAIT_AFTER_BACK_BUTTON_MS)
 
 
 def main():
@@ -490,7 +541,7 @@ def main():
             print("ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.")
             return
 
-        page.wait_for_timeout(5000)
+        wait_with_jitter(page, INITIAL_PAGE_WAIT_MS)
         try:
             page.wait_for_selector("div[role='listitem']", timeout=15000)
         except PWTimeout:
@@ -548,6 +599,7 @@ def main():
                     elif idle_cycles % MAX_IDLE_SCROLL_CYCLES == 0:
                         print(f"🌀 További görgetés ({idle_cycles} próbálkozás) ...")
 
+                    wait_with_jitter(page, WAIT_IDLE_LOOP_MS)
                     scroll_to_load_more(page)
                     continue
 

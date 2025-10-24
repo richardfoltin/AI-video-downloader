@@ -6,6 +6,8 @@ name = "pypi"
 [packages]
 requests = "*"
 playwright = "*"
+python-dotenv = "*"
+dotenv = "*"
 
 [dev-packages]
 
