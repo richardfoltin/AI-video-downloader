@@ -96,7 +96,7 @@ def cookie_header_to_list(header: str, domain: str):
 
 
 def scroll_to_load_more(page):
-    print("⬇️ Görgetés...")
+    print("⬇️  Görgetés...")
     page.mouse.wheel(0, random.randint(900, 1400))
     page.wait_for_timeout(random.randint(300, 600) + SCROLL_PAUSE_MS)
 
@@ -303,10 +303,14 @@ def process_one_card(context, page, card, index: int, identifier: str, upscale_f
         filename = download.suggested_filename or f"video_{index + 1}.mp4"
         filepath = os.path.join(DOWNLOAD_DIR, filename)
 
-        # ha már létezik
+        # ha már létezik, töröljük hogy a friss példány felülírhassa
         if os.path.exists(filepath):
-            print(f"🟡 Már létezik ({filename}), kihagyom.")
-            return
+            print(f"🟡 Már létezik ({filename}), felülírom.")
+            try:
+                os.remove(filepath)
+            except OSError as remove_err:
+                print(f"❌ Nem tudtam törölni a régi fájlt: {remove_err}")
+                return
 
         download.save_as(filepath)
 
@@ -452,19 +456,22 @@ def main():
                         continue
                     if identifier in processed_ids or identifier in pending_set:
                         continue
-                    action, media_info = decide_media_action(identifier)
-                    if action != "process":
-                        if action == "skip_image":
-                            print(f"⏭️  Már lementett kép: {media_info.image_path}")
-                        else:
-                            width_txt = (
-                                f"{media_info.video_width}px"
-                                if media_info.video_width
-                                else "ismeretlen"
-                            )
-                            print(f"⏭️  Már létező videó ({width_txt}): {media_info.video_path}")
+
+                    media_info = analyze_existing_media(identifier)
+
+                    if media_info.image_exists:
+                        print(f"⏭️  Már lementett kép: {media_info.image_path}")
                         processed_ids.add(identifier)
                         continue
+                    elif media_info.video_exists:
+                        if media_info.video_width is not None and media_info.video_width >= UPSCALE_VIDEO_WIDTH:
+                            print(f"⏭️  Már létező videó ({media_info.video_width}px): {media_info.video_path}")
+                            processed_ids.add(identifier)
+                            continue
+                        else:
+                            width_txt = f"{media_info.video_width}px" if media_info.video_width else "ismeretlen"
+                            print(f"♻️  Létező, de nem megfelelő felbontású videó ({width_txt}): {media_info.video_path}")
+
                     pending_queue.append(identifier)
                     pending_set.add(identifier)
                     new_cards_added = True
