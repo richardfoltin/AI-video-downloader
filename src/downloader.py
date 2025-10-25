@@ -327,7 +327,7 @@ def run():
                         print(f"\n{t('processing_complete')}")
                         break
                     else:
-                        attempt_txt = f" ({no_new_card_scrolls}/{config.MAX_SCROLLS_WITHOUT_NEW_CARDS})" if no_new_card_scrolls else ""
+                        attempt_txt = f" ({no_new_card_scrolls + 1}/{config.MAX_SCROLLS_WITHOUT_NEW_CARDS})"
                         print(f"{t('no_cards_scroll')}{attempt_txt}")
 
                         wait_with_jitter(page, config.WAIT_IDLE_LOOP_MS)

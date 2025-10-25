@@ -41,6 +41,10 @@ def scroll_to_load_more(page, direction: str = "down"):
     delta_y = distance if direction == "down" else -distance
     label = (t("scroll_direction_down") if direction == "down" else t("scroll_direction_up"))
     print(t("scrolling", direction=label))
+
+    viewport = page.viewport_size or {"width": 1280, "height": 800}
+    page.mouse.move(int(viewport["width"] * 0.6), int(viewport["height"] * 0.5))
+
     page.mouse.wheel(0, delta_y)
     wait_with_jitter(page, config.SCROLL_PAUSE_MS)
 
