@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 from typing import List
 
 import requests
@@ -35,6 +36,68 @@ def process_one_card(
     download_failures: List[tuple],
 ):
 
+    def download_card_image() -> bool:
+        if not config.DOWNLOAD_IMAGES:
+            return False
+
+        target_path = os.path.join(config.DOWNLOAD_DIR, f"grok-image-{identifier}")
+
+        if os.path.exists(target_path):
+            print(t("image_already_exists", path=target_path))
+            return False
+
+        identifier_url_candidate = identifier.strip()
+        image_src = None
+
+        if identifier_url_candidate.startswith("http"):
+            image_src = identifier_url_candidate
+        elif identifier_url_candidate:
+            image_src = f"https://imagine-public.x.ai/imagine-public/images/{identifier_url_candidate}"
+
+        if not image_src:
+            selector = "img.object-cover[src], img[src*='imagine-public'][src], img[src*='imagine'][src]"
+
+            try:
+                page.wait_for_selector(selector, timeout=config.CARD_VISIBILITY_TIMEOUT_MS)
+                img_locator = page.locator(selector)
+                if img_locator.count() > 0:
+                    image_src = img_locator.first.get_attribute("src")
+            except PWTimeout:
+                pass
+            except Exception:
+                pass
+
+        if not image_src:
+            print(t("no_image_src"))
+            return False
+
+        parsed = urlparse(image_src)
+        if parsed.scheme not in {"http", "https"}:
+            print(t("image_download_failed", status="invalid-url"))
+            return False
+
+        headers = dict(config.ASSET_BASE_HEADERS)
+        headers["user-agent"] = config.USER_AGENT
+
+        try:
+            response = requests.get(image_src, headers=headers, timeout=config.HTTP_REQUEST_TIMEOUT_SEC)
+        except requests.RequestException as request_error:
+            print(t("image_download_error", error=f"{config.COLOR_GRAY}{request_error}{config.COLOR_RESET}"))
+            return False
+
+        if not response.ok:
+            print(t("image_download_failed", status=response.status_code))
+            return False
+
+        try:
+            with open(target_path, "wb") as file_handle:
+                file_handle.write(response.content)
+            print(t("image_download_success", path=target_path))
+            return True
+        except OSError as os_error:
+            print(t("image_write_failed", error=f"{config.COLOR_GRAY}{os_error}{config.COLOR_RESET}"))
+            return False
+
     # Original video processing logic
     print(f"\n{t('card_processing', index=index + 1, identifier=identifier)}")
 
@@ -62,6 +125,12 @@ def process_one_card(
             record_failure(t("card_click_timeout"))
             return
 
+    download_card_image()
+
+    if not config.DOWNLOAD_VIDEOS:
+        print(t("videos_disabled"))
+        return
+
     # Check if card has video option
     try:
         page.wait_for_selector(VIDEO_IMAGE_TOGGLE_SELECTOR, timeout=config.VIDEO_IMAGE_TOGGLE_TIMEOUT_MS)
@@ -71,35 +140,38 @@ def process_one_card(
         has_video_option = page.locator(VIDEO_IMAGE_TOGGLE_SELECTOR).count() > 0
 
     if has_video_option:
-        page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS)
-        page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
-        print(t("menu_opened"))
-
-        disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
-        active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
-        wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
-
-        if disabled.count() > 0:
-            print(t("already_upscaled"))
-            click_safe_area(page)
+        if not config.UPSCALE_VIDEOS:
+            print(t("upscale_disabled"))
         else:
-            print(t("upscale_start"))
-            active.first.click()
-            wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
-            click_safe_area(page)
-            try:
-                page.wait_for_selector(config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS)
-                print(t("upscale_success"))
-            except PWTimeout:
-                print(t("upscale_timeout"))
-                upscale_failures.append(identifier)
+            page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS)
+            page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
+            print(t("menu_opened"))
 
-        wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
+            disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
+            active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
+            wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
+
+            if disabled.count() > 0:
+                print(t("already_upscaled"))
+                click_safe_area(page)
+            else:
+                print(t("upscale_start"))
+                active.first.click()
+                wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
+                click_safe_area(page)
+                try:
+                    page.wait_for_selector(config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS)
+                    print(t("upscale_success"))
+                except PWTimeout:
+                    print(t("upscale_timeout"))
+                    upscale_failures.append(identifier)
+
+            wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
     else:
         print(t("no_video_option_skip_upscale"))
 
     try:
-        if not has_video_option and config.SKIP_IMAGES:
+        if not has_video_option and not config.DOWNLOAD_IMAGES:
             print(t("skipping_no_video_option", identifier=identifier))
             return
 
@@ -243,6 +315,10 @@ def process_one_card(
 
 
 def run():
+    if not config.DOWNLOAD_VIDEOS and not config.DOWNLOAD_IMAGES:
+        print(t("no_media_enabled"))
+        return
+
     cookie_header = load_cookie_header(config.COOKIE_FILE)
     cookies = cookie_header_to_list(cookie_header, ".grok.com")
 

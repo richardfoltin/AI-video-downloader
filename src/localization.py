@@ -72,7 +72,14 @@ MESSAGES = {
         "no_image_element": "Image element not found in card",
         "no_image_src": "Image URL not found in card",
         "image_download_failed": "Image download failed: HTTP {status}",
+        "image_download_error": "Image download error:\n{error}",
+        "image_write_failed": "Could not save image: {error}",
+        "image_download_success": "🖼️  Downloaded image: {path}",
+        "image_already_exists": "⏭️  Image already exists: {path}",
         "no_video_option_skip_upscale": "⏭️  No video option – skipping upscale step",
+        "upscale_disabled": "⏭️  Upscale disabled by configuration – downloading original video",
+        "videos_disabled": "⏭️  Video downloads disabled by configuration – skipping video",
+        "no_media_enabled": "❌ DOWNLOAD_VIDEOS and DOWNLOAD_IMAGES are both disabled. Nothing to do.",
     },
     "hu": {
         # General messages
@@ -138,7 +145,14 @@ MESSAGES = {
         "no_image_element": "Nem találtam kép elemet a kártyában",
         "no_image_src": "Nem találtam kép URL-t a kártyában",
         "image_download_failed": "Kép letöltés sikertelen: HTTP {status}",
+        "image_download_error": "Kép letöltési hiba:\n{error}",
+        "image_write_failed": "Nem tudtam elmenteni a képet: {error}",
+        "image_download_success": "🖼️  Kép letöltve: {path}",
+        "image_already_exists": "⏭️  A kép már létezik: {path}",
         "no_video_option_skip_upscale": "⏭️  Nincs videó opció – kihagyom az upscale lépést",
+        "upscale_disabled": "⏭️  Beállítás miatt kihagyom az upscale lépést",
+        "videos_disabled": "⏭️  Beállítás miatt kihagyom a videó letöltést",
+        "no_media_enabled": "❌ A DOWNLOAD_VIDEOS és DOWNLOAD_IMAGES mindkettő ki van kapcsolva, nincs teendő.",
     },
 }
 

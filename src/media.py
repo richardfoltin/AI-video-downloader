@@ -76,7 +76,7 @@ def probe_video_width(path: str) -> Optional[int]:
     return None
 
 
-def analyze_existing_media(image_filename: str) -> MediaCheckResult:
+def decide_media_action(image_filename: str) -> Tuple[str, MediaCheckResult]:
     name_without_ext, _ = os.path.splitext(image_filename)
     image_path = os.path.join(config.DOWNLOAD_DIR, f"grok-image-{name_without_ext}.png")
     video_path = os.path.join(config.DOWNLOAD_DIR, f"grok-video-{name_without_ext}.mp4")
@@ -85,7 +85,7 @@ def analyze_existing_media(image_filename: str) -> MediaCheckResult:
     video_exists = os.path.exists(video_path)
     video_width = probe_video_width(video_path) if video_exists else None
 
-    return MediaCheckResult(
+    info = MediaCheckResult(
         image_path=image_path,
         image_exists=image_exists,
         video_path=video_path,
@@ -93,12 +93,10 @@ def analyze_existing_media(image_filename: str) -> MediaCheckResult:
         video_width=video_width,
     )
 
-
-def decide_media_action(image_filename: str) -> Tuple[str, MediaCheckResult]:
-    info = analyze_existing_media(image_filename)
-
     # Original logic for cards with video option
     if info.image_exists and not info.video_exists:
+        if config.DOWNLOAD_IMAGES:
+            return "process", info
         return "skip_image", info
 
     if info.video_exists:

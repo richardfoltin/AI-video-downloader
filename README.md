@@ -51,12 +51,18 @@ An intelligent video downloader that automatically downloads and upscales your f
    LANGUAGE=en  # or hu
    COOKIE_FILE=cookies.txt
    DOWNLOAD_DIR=downloads
-   SKIP_IMAGES=false
+   DOWNLOAD_IMAGES=false
+   DOWNLOAD_VIDEOS=true
+   UPSCALE_VIDEOS=true
 
    # Browser settings
    HEADLESS=false
    BROWSER_CHANNEL=chrome
    ```
+   - `DOWNLOAD_IMAGES`: set to `true` to save the card preview image before each video and process image-only cards. Existing files are skipped automatically.
+   - `DOWNLOAD_VIDEOS`: set to `false` to skip downloading videos (only images will be processed when enabled).
+   - `UPSCALE_VIDEOS`: leave `true` to trigger the upscale menu before downloads; set to `false` to skip upscale entirely.
+   - `UPSCALE_VIDEO_WIDTH`: videos with width greater or equal to this threshold are treated as already upscaled and skipped.
 
 ### 🍪 Cookie File Setup
 
