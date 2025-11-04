@@ -182,3 +182,13 @@ def get_message(key: str, **kwargs) -> str:
 def t(key: str, **kwargs) -> str:
     """Alias for get_message for shorter usage."""
     return get_message(key, **kwargs)
+
+
+def print_error(message: str) -> None:
+    """Print errors using the configured red highlight when available."""
+    from . import config
+
+    print(f"{config.COLOR_RED}{message}{config.COLOR_RESET}")
+
+
+__all__ = ["t", "print_error", "get_message"]
