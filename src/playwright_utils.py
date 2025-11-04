@@ -29,6 +29,7 @@ BACK_BUTTON_SELECTOR = make_aria_selector("button", localization.BACK_BUTTON_LAB
 UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=True)
 UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=False)
 VIDEO_IMAGE_TOGGLE_SELECTOR = make_aria_selector("div", ["Text alignment"])
+IMAGE_BUTTON_SELECTOR = make_aria_selector("button", localization.IMAGE_BUTTON_LABELS)
 
 
 def scroll_to_load_more(page, direction: str = "down"):

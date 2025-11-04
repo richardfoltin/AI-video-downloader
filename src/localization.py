@@ -5,7 +5,8 @@ import os
 MORE_OPTIONS_LABELS = ["More options", "További lehetőségek"]
 DOWNLOAD_BUTTON_LABELS = ["Download", "Letöltés"]
 BACK_BUTTON_LABELS = ["Back", "Vissza"]
-UPSCALE_MENU_LABELS = ["Videó felskálázása", "Upscale video"]
+UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
+IMAGE_BUTTON_LABELS = ["Image", "Kép"]
 
 MESSAGES = {
     "en": {
@@ -51,6 +52,7 @@ MESSAGES = {
         "card_not_found_reason": "Card not found after scrolling",
         "already_downloaded_image": "⏭️  Already downloaded image: {path}",
         "already_downloaded_video": "⏭️  Existing video ({width}): {path}",
+        "all_media_downloaded": "⏭️  All requested media already downloaded for {identifier}",
         "alternative_download_http_error": "Alternative download HTTP error:\n{error}",
         "alternative_download_failed": "Alternative download failed: HTTP {status}",
         "alternative_download_zero_byte": "Alternative download also remained 0-byte",
@@ -124,6 +126,7 @@ MESSAGES = {
         "card_not_found_reason": "A kártya nem található a görgetések után",
         "already_downloaded_image": "⏭️  Már lementett kép: {path}",
         "already_downloaded_video": "⏭️  Már létező videó ({width}): {path}",
+        "all_media_downloaded": "⏭️  A kért média már mind le van töltve: {identifier}",
         "alternative_download_http_error": "Alternatív letöltés HTTP hiba:\n{error}",
         "alternative_download_failed": "Alternatív letöltés sikertelen: HTTP {status}",
         "alternative_download_zero_byte": "Alternatív letöltés is 0 bájtos maradt",

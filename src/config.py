@@ -41,7 +41,7 @@ def env_int(key: str, default: int) -> int:
 
 
 FAVORITES_URL = os.getenv("FAVORITES_URL", "https://grok.com/imagine/favorites")
-USER_AGENT = os.getenv("USER_AGENT","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
+USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
 COOKIE_FILE = os.getenv("COOKIE_FILE", "cookies.txt")
 DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
 HEADLESS = env_bool("HEADLESS", False)
@@ -112,6 +112,7 @@ UPSCALE_TIMEOUT_MS = env_int("UPSCALE_TIMEOUT_MS", 20 * 1000)
 CARDS_XPATH = "//div[contains(@class,'group/media-post-masonry-card')]"
 GALLERY_LISTITEM_SELECTOR = "div[role='listitem']"
 HD_BUTTON_SELECTOR = "button:has(div:text('HD'))"
+IMAGE_FALLBACK_SELECTOR = "img.object-cover[src], img[src*='imagine-public'][src], img[src*='imagine'][src]"
 
 # Timeouts (in milliseconds)
 CARD_VISIBILITY_TIMEOUT_MS = env_int("CARD_VISIBILITY_TIMEOUT_MS", 15000)
