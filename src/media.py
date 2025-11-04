@@ -57,7 +57,7 @@ def probe_video_width(path: str) -> Optional[int]:
     if payload_text is None:
         if _FFPROBE_AVAILABLE is not False:
             _FFPROBE_AVAILABLE = False
-            print(t("ffprobe_not_found"))
+            print(f"{config.COLOR_RED}{t('ffprobe_not_found')}{config.COLOR_RESET}")
         return None
     if payload_text == "":
         return None

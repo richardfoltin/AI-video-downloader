@@ -150,3 +150,5 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
+COLOR_ACCENT = "\033[38;2;204;102;0m" if USE_COLOR else ""
+COLOR_RED = "\033[91m" if USE_COLOR else ""

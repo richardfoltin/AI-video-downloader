@@ -17,6 +17,14 @@ def make_aria_selector(tag: str, labels):
     return ", ".join(selectors)
 
 
+def make_button_text_selector(labels):
+    selectors = []
+    for label in labels:
+        selectors.append(f"button:has-text('{label}')")
+        selectors.append(f"button:has(span:has-text('{label}'))")
+    return ", ".join(selectors)
+
+
 def build_menuitem_xpath(texts, disabled: bool):
     text_conditions = " or ".join([f"contains(normalize-space(.), '{text}')" for text in texts])
     disabled_clause = "@aria-disabled='true'" if disabled else "not(@aria-disabled)"
@@ -29,7 +37,7 @@ BACK_BUTTON_SELECTOR = make_aria_selector("button", localization.BACK_BUTTON_LAB
 UPSCALE_MENU_DISABLED_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=True)
 UPSCALE_MENU_ACTIVE_XPATH = build_menuitem_xpath(localization.UPSCALE_MENU_LABELS, disabled=False)
 VIDEO_IMAGE_TOGGLE_SELECTOR = make_aria_selector("div", ["Text alignment"])
-IMAGE_BUTTON_SELECTOR = make_aria_selector("button", localization.IMAGE_BUTTON_LABELS)
+IMAGE_BUTTON_SELECTOR = make_button_text_selector(localization.IMAGE_BUTTON_LABELS)
 
 
 def scroll_to_load_more(page, direction: str = "down"):
