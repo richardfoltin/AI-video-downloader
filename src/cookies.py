@@ -7,7 +7,11 @@ def load_cookie_header(path: str) -> str:
     with open(path, "r", encoding="utf-8") as handle:
         data = handle.read().strip()
     if not data:
-        raise ValueError(t("empty_cookie_file"))
+        raise ValueError(t("empty_cookie_file", path=path))
+
+    valid_pairs = [part for part in data.split(";") if "=" in part]
+    if not valid_pairs:
+        raise ValueError(t("empty_cookie_file", path=path))
     return data
 
 
