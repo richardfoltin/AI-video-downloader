@@ -41,25 +41,24 @@ def env_int(key: str, default: int) -> int:
 
 
 FAVORITES_URL = os.getenv("FAVORITES_URL", "https://grok.com/imagine/favorites")
-USER_AGENT = os.getenv(
-    "USER_AGENT",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-)
+USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
 COOKIE_FILE = os.getenv("COOKIE_FILE", "cookies.txt")
 DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
 HEADLESS = env_bool("HEADLESS", False)
 LANGUAGE = os.getenv("LANGUAGE", "en")
-SCROLL_PAUSE_MS = env_int("SCROLL_PAUSE_MS", 800)
-UPSCALE_TIMEOUT_MS = env_int("UPSCALE_TIMEOUT_MS", 20 * 1000)
-UPSCALE_VIDEO_WIDTH = env_int("UPSCALE_VIDEO_WIDTH", 928)
-MOUSE_SCROLL = env_int("MOUSE_SCROLL", 400)
-MOUSE_SCROLL_JITTER_MS = env_int("MOUSE_SCROLL_JITTER_MS", 100)
+
+# Wait times (in milliseconds)
 WAIT_JITTER_MS = env_int("WAIT_JITTER_MS", 200)
 WAIT_AFTER_CARD_SCROLL_MS = env_int("WAIT_AFTER_CARD_SCROLL_MS", 600)
 WAIT_AFTER_MENU_INTERACTION_MS = env_int("WAIT_AFTER_MENU_INTERACTION_MS", 400)
 WAIT_AFTER_BACK_BUTTON_MS = env_int("WAIT_AFTER_BACK_BUTTON_MS", 400)
 WAIT_IDLE_LOOP_MS = env_int("WAIT_IDLE_LOOP_MS", 300)
 INITIAL_PAGE_WAIT_MS = env_int("INITIAL_PAGE_WAIT_MS", 5000)
+
+# Scroll and interaction settings
+MOUSE_SCROLL = env_int("MOUSE_SCROLL", 400)
+MOUSE_SCROLL_JITTER_MS = env_int("MOUSE_SCROLL_JITTER_MS", 100)
+SCROLL_PAUSE_MS = env_int("SCROLL_PAUSE_MS", 800)
 MAX_SCROLLS_WITHOUT_NEW_CARDS = env_int("MAX_SCROLLS_WITHOUT_NEW_CARDS", 3)
 SEARCH_SCROLL_UP_ATTEMPTS = env_int("SEARCH_SCROLL_UP_ATTEMPTS", 2)
 SEARCH_SCROLL_DOWN_ATTEMPTS = env_int("SEARCH_SCROLL_DOWN_ATTEMPTS", 5)
@@ -103,12 +102,17 @@ Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
 """
 
 # Media download options
-SKIP_IMAGES = env_bool("SKIP_IMAGES", False)
+DOWNLOAD_VIDEOS = env_bool("DOWNLOAD_VIDEOS", True)
+DOWNLOAD_IMAGES = env_bool("DOWNLOAD_IMAGES", False)
+UPSCALE_VIDEO_WIDTH = env_int("UPSCALE_VIDEO_WIDTH", 928)
+UPSCALE_VIDEOS = env_bool("UPSCALE_VIDEOS", True)
+UPSCALE_TIMEOUT_MS = env_int("UPSCALE_TIMEOUT_MS", 20 * 1000)
 
 # Selectors
 CARDS_XPATH = "//div[contains(@class,'group/media-post-masonry-card')]"
 GALLERY_LISTITEM_SELECTOR = "div[role='listitem']"
 HD_BUTTON_SELECTOR = "button:has(div:text('HD'))"
+IMAGE_FALLBACK_SELECTOR = "img.object-cover[src], img[src*='imagine-public'][src], img[src*='imagine'][src]"
 
 # Timeouts (in milliseconds)
 CARD_VISIBILITY_TIMEOUT_MS = env_int("CARD_VISIBILITY_TIMEOUT_MS", 15000)
@@ -116,7 +120,7 @@ DOWNLOAD_BUTTON_TIMEOUT_MS = env_int("DOWNLOAD_BUTTON_TIMEOUT_MS", 60000)
 BACK_BUTTON_TIMEOUT_MS = env_int("BACK_BUTTON_TIMEOUT_MS", 10000)
 GALLERY_LOAD_TIMEOUT_MS = env_int("GALLERY_LOAD_TIMEOUT_MS", 15000)
 MORE_OPTIONS_BUTTON_TIMEOUT_MS = env_int("MORE_OPTIONS_BUTTON_TIMEOUT_MS", 15000)
-VIDEO_IMAGE_TOGGLE_TIMEOUT_MS = env_int("VIDEO_IMAGE_TOGGLE_TIMEOUT_MS", 1000)
+VIDEO_IMAGE_TOGGLE_TIMEOUT_MS = env_int("VIDEO_IMAGE_TOGGLE_TIMEOUT_MS", 2000)
 
 # HTTP timeouts (in seconds)
 HTTP_REQUEST_TIMEOUT_SEC = env_int("HTTP_REQUEST_TIMEOUT_SEC", 60)
@@ -146,3 +150,5 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 COLOR_GRAY = "\033[90m" if USE_COLOR else ""
 COLOR_RESET = "\033[0m" if USE_COLOR else ""
+COLOR_ACCENT = "\033[38;2;204;102;0m" if USE_COLOR else ""
+COLOR_RED = "\033[91m" if USE_COLOR else ""

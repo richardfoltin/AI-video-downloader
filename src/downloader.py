@@ -1,29 +1,82 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
-import requests
 from playwright.sync_api import TimeoutError as PWTimeout, sync_playwright
 
 from . import config
 from .cookies import cookie_header_to_list, load_cookie_header
-from .localization import t
-from .media import decide_media_action
+from .image_downloader import download_image_for_card
+from .localization import print_error, t
 from .playwright_utils import (
     BACK_BUTTON_SELECTOR,
-    DOWNLOAD_BUTTON_SELECTOR,
-    MORE_OPTIONS_BUTTON_SELECTOR,
-    UPSCALE_MENU_ACTIVE_XPATH,
-    UPSCALE_MENU_DISABLED_XPATH,
-    VIDEO_IMAGE_TOGGLE_SELECTOR,
-    click_safe_area,
-    extract_video_source,
     find_card_by_identifier,
     get_card_identifier,
     scroll_to_load_more,
     wait_with_jitter,
 )
+from .video_downloader import card_has_video_toggle, download_video_for_card, probe_video_width
+
+
+@dataclass
+class MediaCheckResult:
+    image_path: str
+    image_exists: bool
+    video_path: str
+    video_exists: bool
+    video_width: Optional[int]
+
+
+def decide_media_action(image_filename: str) -> tuple[str, MediaCheckResult]:
+    name_without_ext, _ = os.path.splitext(image_filename)
+    image_path = os.path.join(config.DOWNLOAD_DIR, f"grok-image-{name_without_ext}.png")
+    video_path = os.path.join(config.DOWNLOAD_DIR, f"grok-video-{name_without_ext}.mp4")
+
+    image_exists = os.path.exists(image_path)
+    video_exists = os.path.exists(video_path)
+    video_width = probe_video_width(video_path) if video_exists else None
+
+    info = MediaCheckResult(
+        image_path=image_path,
+        image_exists=image_exists,
+        video_path=video_path,
+        video_exists=video_exists,
+        video_width=video_width,
+    )
+
+    if info.image_exists and not info.video_exists:
+        if config.DOWNLOAD_IMAGES:
+            return "process", info
+        return "skip_image", info
+
+    if info.video_exists:
+        if info.video_width is None:
+            return "process", info
+        if info.video_width >= config.UPSCALE_VIDEO_WIDTH:
+            return "skip_video", info
+        return "process", info
+
+    return "process", info
+
+
+def media_requirements(media_info: MediaCheckResult) -> Tuple[bool, bool]:
+    need_video = (
+        config.DOWNLOAD_VIDEOS
+        and (
+            not media_info.video_exists
+            or (
+                config.UPSCALE_VIDEOS
+                and (
+                    media_info.video_width is None
+                    or media_info.video_width < config.UPSCALE_VIDEO_WIDTH
+                )
+            )
+        )
+    )
+    need_image = config.DOWNLOAD_IMAGES and not media_info.image_exists
+    return need_video, need_image
 
 
 def process_one_card(
@@ -33,13 +86,27 @@ def process_one_card(
     identifier: str,
     upscale_failures: List[str],
     download_failures: List[tuple],
+    media_info,
 ):
+    need_video_download, need_image_download = media_requirements(media_info)
 
-    # Original video processing logic
+    if not need_video_download and not need_image_download:
+        details = []
+        if media_info.video_exists:
+            details.append(f"🎞️ {config.COLOR_ACCENT}{media_info.video_path}{config.COLOR_RESET}")
+        if media_info.image_exists:
+            details.append(f"🖼️ {config.COLOR_ACCENT}{media_info.image_path}{config.COLOR_RESET}")
+        if details:
+            joined = "\n   ".join(details)
+            print(t("all_media_downloaded_detailed", details=joined))
+        else:
+            print(t("all_media_downloaded", identifier=identifier))
+        return
+
     print(f"\n{t('card_processing', index=index + 1, identifier=identifier)}")
 
     def record_failure(reason: str):
-        print(t("download_error", reason=reason))
+        print_error(t("download_error", reason=reason))
         download_failures.append((identifier, reason))
 
     for attempt in range(2):
@@ -62,169 +129,19 @@ def process_one_card(
             record_failure(t("card_click_timeout"))
             return
 
-    # Check if card has video option
     try:
-        page.wait_for_selector(VIDEO_IMAGE_TOGGLE_SELECTOR, timeout=config.VIDEO_IMAGE_TOGGLE_TIMEOUT_MS)
-    except PWTimeout:
-        has_video_option = False
-    else:
-        has_video_option = page.locator(VIDEO_IMAGE_TOGGLE_SELECTOR).count() > 0
+        has_video_option = card_has_video_toggle(page)
 
-    if has_video_option:
-        page.wait_for_selector(MORE_OPTIONS_BUTTON_SELECTOR, timeout=config.MORE_OPTIONS_BUTTON_TIMEOUT_MS)
-        page.locator(MORE_OPTIONS_BUTTON_SELECTOR).first.click()
-        print(t("menu_opened"))
+        if need_video_download:
+            if not has_video_option:
+                print(t("skipping_no_video_option", identifier=identifier))
+            else:
+                if download_video_for_card(page, identifier, media_info, index, upscale_failures, record_failure):
+                    media_info.video_exists = True
 
-        disabled = page.locator(UPSCALE_MENU_DISABLED_XPATH)
-        active = page.locator(UPSCALE_MENU_ACTIVE_XPATH)
-        wait_with_jitter(page, config.WAIT_AFTER_CARD_SCROLL_MS)
-
-        if disabled.count() > 0:
-            print(t("already_upscaled"))
-            click_safe_area(page)
-        else:
-            print(t("upscale_start"))
-            active.first.click()
-            wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
-            click_safe_area(page)
-            try:
-                page.wait_for_selector(config.HD_BUTTON_SELECTOR, timeout=config.UPSCALE_TIMEOUT_MS)
-                print(t("upscale_success"))
-            except PWTimeout:
-                print(t("upscale_timeout"))
-                upscale_failures.append(identifier)
-
-        wait_with_jitter(page, config.WAIT_AFTER_MENU_INTERACTION_MS)
-    else:
-        print(t("no_video_option_skip_upscale"))
-
-    try:
-        if not has_video_option and config.SKIP_IMAGES:
-            print(t("skipping_no_video_option", identifier=identifier))
-            return
-
-        dl_button = page.locator(DOWNLOAD_BUTTON_SELECTOR)
-        if dl_button.count() == 0:
-            record_failure(t("no_download_button"))
-            return
-        dl_button.first.wait_for(state="visible", timeout=config.DOWNLOAD_BUTTON_TIMEOUT_MS)
-
-        with page.expect_download() as dl_info:
-            dl_button.first.click()
-        download = dl_info.value
-
-        filename = (
-            download.suggested_filename
-            or config.DEFAULT_FILENAME_PATTERN.format(index=index + 1)
-        )
-        filepath = os.path.join(config.DOWNLOAD_DIR, filename)
-
-        if os.path.exists(filepath):
-            print(t("already_exists_overwrite", filename=filename))
-            try:
-                os.remove(filepath)
-            except OSError as remove_err:
-                record_failure(t("delete_existing_failed", error=remove_err))
-                return
-
-        download.save_as(filepath)
-
-        if os.path.getsize(filepath) == 0:
-            print(t("zero_byte_file_delete_retry"))
-            try:
-                os.remove(filepath)
-            except OSError as remove_err:
-                record_failure(t("zero_byte_file_delete_failed", error=remove_err))
-                return
-
-            fallback_url = extract_video_source(page)
-            if not fallback_url:
-                record_failure(t("video_src_not_found"))
-                return
-
-            print(t("alternative_download", url=fallback_url))
-
-            # First attempt: download via Playwright context (carries browser cookies)
-            try:
-                api_resp = page.context.request.get(fallback_url, headers={
-                    "user-agent": config.USER_AGENT,
-                    "accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
-                    "referer": config.FAVORITES_URL,
-                    # Many CDNs require Range for media assets; request full stream
-                    "range": "bytes=0-",
-                })
-                if api_resp.ok:
-                    content = api_resp.body()
-                    with open(filepath, "wb") as handle:
-                        handle.write(content)
-
-                    alt_size = os.path.getsize(filepath)
-                    if alt_size == 0:
-                        record_failure(t("alternative_download_zero_byte"))
-                        return
-                    print(t("alternative_download_success", filename=filename, size=alt_size))
-                    # Done via Playwright, skip requests fallback
-                    return
-            except Exception as req_err:
-                # Fall through to requests-based attempt
-                pass
-
-            # Second attempt: force a browser-driven download via an injected <a download> element
-            try:
-                with page.expect_download() as dl_info:
-                    page.evaluate(
-                        "(url) => { const a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }",
-                        fallback_url,
-                    )
-                d2 = dl_info.value
-                d2.save_as(filepath)
-                if os.path.getsize(filepath) > 0:
-                    print(t("alternative_download_success", filename=filename, size=os.path.getsize(filepath)))
-                    return
-            except Exception:
-                # Continue to requests fallback
-                pass
-
-            # Third attempt: requests with Cookie header from cookie file
-            headers = {
-                "user-agent": config.USER_AGENT,
-                "accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
-                "referer": config.FAVORITES_URL,
-                "range": "bytes=0-",
-            }
-            try:
-                try:
-                    cookie_header = load_cookie_header(config.COOKIE_FILE)
-                except Exception:
-                    cookie_header = None
-                if cookie_header:
-                    headers["cookie"] = cookie_header
-
-                response = requests.get(
-                    fallback_url,
-                    stream=True,
-                    headers=headers,
-                    timeout=config.HTTP_REQUEST_TIMEOUT_SEC,
-                )
-            except requests.RequestException as req_err:
-                record_failure(t("alternative_download_http_error", error=f"{config.COLOR_GRAY}{req_err}{config.COLOR_RESET}"))
-                return
-
-            if not response.ok:
-                record_failure(t("alternative_download_failed", status=response.status_code))
-                return
-
-            with open(filepath, "wb") as handle:
-                for chunk in response.iter_content(1024 * 1024):
-                    handle.write(chunk)
-
-            alt_size = os.path.getsize(filepath)
-            if alt_size == 0:
-                record_failure(t("alternative_download_zero_byte"))
-                return
-            print(t("alternative_download_success", filename=filename, size=alt_size))
-        else:
-            print(t("download_success", filename=filename))
+        if need_image_download:
+            if download_image_for_card(page, identifier, media_info, has_video_option, record_failure):
+                media_info.image_exists = True
 
     except Exception as error:
         record_failure(t("video_processing_error", index=index + 1, error=f"{config.COLOR_GRAY}{error}{config.COLOR_RESET}"))
@@ -243,6 +160,10 @@ def process_one_card(
 
 
 def run():
+    if not config.DOWNLOAD_VIDEOS and not config.DOWNLOAD_IMAGES:
+        print_error(t("no_media_enabled"))
+        return
+
     cookie_header = load_cookie_header(config.COOKIE_FILE)
     cookies = cookie_header_to_list(cookie_header, ".grok.com")
 
@@ -269,7 +190,7 @@ def run():
         response = page.goto(config.FAVORITES_URL, wait_until="domcontentloaded")
 
         if response and response.status == 403:
-            print(t("forbidden_error"))
+            print_error(t("forbidden_error"))
             print(t("forbidden_help"))
             return
 
@@ -277,12 +198,12 @@ def run():
         try:
             page.wait_for_selector(config.GALLERY_LISTITEM_SELECTOR, timeout=config.GALLERY_LOAD_TIMEOUT_MS)
         except PWTimeout:
-            print(t("gallery_load_failed"))
+            print_error(t("gallery_load_failed"))
             return
 
         cards_locator = page.locator(config.CARDS_XPATH)
         processed_ids = set()
-        pending_queue: List[str] = []
+        pending_queue = []
         pending_set = set()
         processed_count = 0
         no_new_card_scrolls = 0
@@ -305,19 +226,24 @@ def run():
                     # Found any new card (whether we process it or skip it)
                     any_new_cards_found = True
 
-                    action, media_info = decide_media_action(identifier)
+                    _, media_info = decide_media_action(identifier)
+                    need_video_download, need_image_download = media_requirements(media_info)
 
-                    if action == "skip_image":
-                        print(t("already_downloaded_image", path=media_info.image_path))
+                    if not (need_video_download or need_image_download):
+                        details = []
+                        if media_info.video_exists:
+                            details.append(f"🎞️ {config.COLOR_ACCENT}{media_info.video_path}{config.COLOR_RESET}")
+                        if media_info.image_exists:
+                            details.append(f"🖼️ {config.COLOR_ACCENT}{media_info.image_path}{config.COLOR_RESET}")
+                        if details:
+                            joined = "\n   ".join(details)
+                            print(t("all_media_downloaded_detailed", details=joined))
+                        else:
+                            print(t("all_media_downloaded", identifier=identifier))
                         processed_ids.add(identifier)
                         continue
-                    if action == "skip_video":
-                        width_txt = (f"{media_info.video_width}px" if media_info.video_width else t("video_width_unknown"))
-                        print(t("already_downloaded_video", width=width_txt, path=media_info.video_path))
-                        processed_ids.add(identifier)
-                        continue
 
-                    pending_queue.append(identifier)
+                    pending_queue.append((identifier, media_info))
                     pending_set.add(identifier)
 
                 if not pending_queue:
@@ -337,9 +263,10 @@ def run():
                 else:
                     no_new_card_scrolls = 0
 
-                print(t("remaining_videos", count=len(pending_queue), queue=f"{config.COLOR_GRAY}{pending_queue}{config.COLOR_RESET}"))
+                queue_preview = [item[0] for item in pending_queue]
+                print(t("remaining_videos", count=len(pending_queue), queue=f"{config.COLOR_GRAY}{queue_preview}{config.COLOR_RESET}"))
 
-                identifier = pending_queue.pop(0)
+                identifier, media_info = pending_queue.pop(0)
                 pending_set.discard(identifier)
 
                 card = find_card_by_identifier(page, identifier)
@@ -363,19 +290,20 @@ def run():
 
                     if found_card is None:
                         reason = t("card_not_found_reason")
-                        print(t("card_not_found_after_scroll", identifier=identifier))
+                        print_error(t("card_not_found_after_scroll", identifier=identifier))
                         download_failures.append((identifier, reason))
                         processed_ids.add(identifier)
                         continue
 
                     card = found_card
 
-                process_one_card(page, card, processed_count, identifier, upscale_failures, download_failures)
+                process_one_card(page, card, processed_count, identifier, upscale_failures, download_failures, media_info)
                 processed_ids.add(identifier)
                 processed_count += 1
                 no_new_card_scrolls = 0
         except Exception as error:
-            print(f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}")
+            combined = f"{t('process_interrupted')}\n\n{config.COLOR_GRAY}{error}{config.COLOR_RESET}"
+            print_error(combined)
             err_text = str(error).lower()
             transient_browser_errors = (
                 "target closed",

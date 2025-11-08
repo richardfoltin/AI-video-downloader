@@ -6,10 +6,12 @@ MORE_OPTIONS_LABELS = ["More options", "További lehetőségek"]
 DOWNLOAD_BUTTON_LABELS = ["Download", "Letöltés"]
 BACK_BUTTON_LABELS = ["Back", "Vissza"]
 UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
+IMAGE_BUTTON_LABELS = ["Image", "Kép"]
 
 MESSAGES = {
     "en": {
-        "gallery_opening": "🌐 Opening gallery...",
+        # General messages
+        "gallery_opening": "\n🌐 Opening gallery...",
         "gallery_load_failed": "❌ Failed to load gallery – check your cookie file.",
         "forbidden_error": "❌ 403 Forbidden — cookie may be invalid or browser fingerprint blocked.",
         "forbidden_help": "ℹ️ Try regenerating the cookie file with the same browser and user-agent as the source.",
@@ -19,7 +21,7 @@ MESSAGES = {
         "zero_byte_file_delete_failed": "Could not delete 0-byte file: {error}",
         "alternative_download": "🔁 Alternative download: {url}",
         "alternative_download_success": "📥 Downloaded from alternative source: {filename} ({size} bytes)",
-        "download_success": "📥 Downloaded: {filename}",
+        "download_success": "📥 Video downloaded: {filename}",
         "back_to_gallery": "↩️  Back to gallery.",
         "back_failed_continue": "⚠️  Could not go back, but continuing.",
         "processing_complete": "🎉 Done – all videos processed.",
@@ -50,6 +52,8 @@ MESSAGES = {
         "card_not_found_reason": "Card not found after scrolling",
         "already_downloaded_image": "⏭️  Already downloaded image: {path}",
         "already_downloaded_video": "⏭️  Existing video ({width}): {path}",
+        "all_media_downloaded": "⏭️  All requested media already downloaded for {identifier}",
+        "all_media_downloaded_detailed": "⏭️  All requested media already downloaded:\n   {details}",
         "alternative_download_http_error": "Alternative download HTTP error:\n{error}",
         "alternative_download_failed": "Alternative download failed: HTTP {status}",
         "alternative_download_zero_byte": "Alternative download also remained 0-byte",
@@ -62,19 +66,28 @@ MESSAGES = {
         "scroll_direction_up": "up",
         "download_error": "❌ Download error: {reason}",
         "ffprobe_not_found": "⚠️  ffprobe not found, cannot check video resolution – will reprocess videos.",
-        "empty_cookie_file": "The cookie file is empty!",
+        "empty_cookie_file": "❌ Cookie file problem.\n\nI tried to read cookies from {path} but the file is either empty or not in the expected name=value; format.\n\nFix it by:\n  • Opening the browser session that works with Grok.\n  • Exporting the cookies for grok.com (e.g. Chrome DevTools → Application → Cookies) or copying the cookie: request header from a working request.\n  • Pasting the raw header (for example name=value; name2=value2) into the file and saving it as plain UTF-8 text without quotes or extra blank lines.\n\nAfter updating the file, rerun the downloader.",
         "card_not_found_for_clicking": "Card not found for clicking",
         "card_click_timeout": "Card click timed out",
         "delete_existing_failed": "Could not delete existing file: {error}",
         "video_processing_error": "Error at video {index}:\n{error}",
         "skipping_no_video_option": "⏭️  Skipping {identifier} card – no video option available",
-        "no_image_element": "Image element not found in card",
+        "no_image_element": "🔍 Image element not found in card",
         "no_image_src": "Image URL not found in card",
         "image_download_failed": "Image download failed: HTTP {status}",
+        "image_download_error": "Image download error:\n{error}",
+        "image_write_failed": "Could not save image: {error}",
+        "image_download_success": "🖼️  Image downloaded: {name} {resolution}",
+        "image_resolution_unknown": "unknown size",
+        "image_already_exists": "⏭️  Image already exists: {path}",
         "no_video_option_skip_upscale": "⏭️  No video option – skipping upscale step",
+        "upscale_disabled": "⏭️  Upscale disabled by configuration – downloading original video",
+        "videos_disabled": "⏭️  Video downloads disabled by configuration – skipping video",
+        "no_media_enabled": "❌ DOWNLOAD_VIDEOS and DOWNLOAD_IMAGES are both disabled. Nothing to do.",
     },
     "hu": {
-        "gallery_opening": "🌐 Galéria megnyitása...",
+        # General messages
+        "gallery_opening": "\n🌐 Galéria megnyitása...",
         "gallery_load_failed": "❌ Nem sikerült betölteni a galériát – ellenőrizd a cookie fájlt.",
         "forbidden_error": "❌ 403 Forbidden — valószínűleg a cookie érvénytelen vagy a böngésző fingerprint blokkolt.",
         "forbidden_help": "ℹ️ Próbáld új cookie fájl generálását ugyanazzal a böngészővel és user-agenttel, ahonnan a cookie származik.",
@@ -84,7 +97,7 @@ MESSAGES = {
         "zero_byte_file_delete_failed": "Nem tudtam törölni a 0 bájtos fájlt: {error}",
         "alternative_download": "🔁 Alternatív letöltés: {url}",
         "alternative_download_success": "📥 Letöltve alternatív forrásból: {filename} ({size} bájt)",
-        "download_success": "📥 Letöltve: {filename}",
+        "download_success": "📥 Videó letöltve: {filename}",
         "back_to_gallery": "↩️  Visszatérés a galériába.",
         "back_failed_continue": "⚠️  Nem sikerült visszalépni, de folytatom.",
         "processing_complete": "🎉 Kész – minden videó feldolgozva.",
@@ -115,6 +128,8 @@ MESSAGES = {
         "card_not_found_reason": "A kártya nem található a görgetések után",
         "already_downloaded_image": "⏭️  Már lementett kép: {path}",
         "already_downloaded_video": "⏭️  Már létező videó ({width}): {path}",
+        "all_media_downloaded": "⏭️  A kért média már mind le van töltve: {identifier}",
+        "all_media_downloaded_detailed": "⏭️  A kért média már mind le van töltve:\n   {details}",
         "alternative_download_http_error": "Alternatív letöltés HTTP hiba:\n{error}",
         "alternative_download_failed": "Alternatív letöltés sikertelen: HTTP {status}",
         "alternative_download_zero_byte": "Alternatív letöltés is 0 bájtos maradt",
@@ -127,16 +142,24 @@ MESSAGES = {
         "scroll_direction_up": "felfelé",
         "download_error": "❌ Letöltési hiba: {reason}",
         "ffprobe_not_found": "⚠️  ffprobe nem található, a videók felbontását nem tudom ellenőrizni – újra feldolgozom őket.",
-        "empty_cookie_file": "A cookie fájl üres!",
+        "empty_cookie_file": "❌ Hiba a cookie fájllal.\n\nA(z) {path} fájl üres vagy nem a várt name=value; formátumot tartalmazza.\n\nJavítsd így:\n  • Nyisd meg azt a böngésző munkamenetet, amivel a Grok működik.\n  • Exportáld a grok.com sütijeit (pl. Chrome DevTools → Application → Cookies), vagy másold ki egy működő kérés cookie: fejlécét.\n  • Illeszd be a nyers fejlécet (például name=value; name2=value2 formában) a fájlba, és mentsd el egyszerű UTF-8 szövegként idézőjelek és üres sorok nélkül.\n\nA fájl frissítése után futtasd újra a letöltőt.",
         "card_not_found_for_clicking": "A kártya nem található a kattintáshoz",
         "card_click_timeout": "A kártyára kattintás időtúllépett",
         "delete_existing_failed": "Nem tudtam törölni a régi fájlt: {error}",
         "video_processing_error": "Hiba a(z) {index}. videónál:\n{error}",
         "skipping_no_video_option": "⏭️  {identifier} kártya kihagyása – nincs videó opció",
-        "no_image_element": "Nem találtam kép elemet a kártyában",
+        "no_image_element": "🔍 Nem találtam kép elemet a kártyában",
         "no_image_src": "Nem találtam kép URL-t a kártyában",
         "image_download_failed": "Kép letöltés sikertelen: HTTP {status}",
+        "image_download_error": "Kép letöltési hiba:\n{error}",
+        "image_write_failed": "Nem tudtam elmenteni a képet: {error}",
+        "image_download_success": "🖼️  Kép letöltve: {name} {resolution}",
+        "image_resolution_unknown": "ismeretlen méret",
+        "image_already_exists": "⏭️  A kép már létezik: {path}",
         "no_video_option_skip_upscale": "⏭️  Nincs videó opció – kihagyom az upscale lépést",
+        "upscale_disabled": "⏭️  Beállítás miatt kihagyom az upscale lépést",
+        "videos_disabled": "⏭️  Beállítás miatt kihagyom a videó letöltést",
+        "no_media_enabled": "❌ A DOWNLOAD_VIDEOS és DOWNLOAD_IMAGES mindkettő ki van kapcsolva, nincs teendő.",
     },
 }
 
@@ -159,3 +182,13 @@ def get_message(key: str, **kwargs) -> str:
 def t(key: str, **kwargs) -> str:
     """Alias for get_message for shorter usage."""
     return get_message(key, **kwargs)
+
+
+def print_error(message: str) -> None:
+    """Print errors using the configured red highlight when available."""
+    from . import config
+
+    print(f"{config.COLOR_RED}{message}{config.COLOR_RESET}")
+
+
+__all__ = ["t", "print_error", "get_message"]
