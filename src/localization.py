@@ -5,11 +5,10 @@ import os
 MORE_OPTIONS_LABELS = ["More options", "További lehetőségek"]
 DOWNLOAD_BUTTON_LABELS = ["Download", "Letöltés"]
 BACK_BUTTON_LABELS = ["Back", "Vissza"]
-UPSCALE_MENU_LABELS = ["Videó felskálázása", "Upscale video"]
+UPSCALE_MENU_LABELS = ["Upscale video", "Videó felskálázása"]
 
 MESSAGES = {
     "en": {
-        # General messages
         "gallery_opening": "🌐 Opening gallery...",
         "gallery_load_failed": "❌ Failed to load gallery – check your cookie file.",
         "forbidden_error": "❌ 403 Forbidden — cookie may be invalid or browser fingerprint blocked.",
@@ -75,7 +74,6 @@ MESSAGES = {
         "no_video_option_skip_upscale": "⏭️  No video option – skipping upscale step",
     },
     "hu": {
-        # General messages
         "gallery_opening": "🌐 Galéria megnyitása...",
         "gallery_load_failed": "❌ Nem sikerült betölteni a galériát – ellenőrizd a cookie fájlt.",
         "forbidden_error": "❌ 403 Forbidden — valószínűleg a cookie érvénytelen vagy a böngésző fingerprint blokkolt.",
@@ -145,9 +143,9 @@ MESSAGES = {
 
 def get_message(key: str, **kwargs) -> str:
     """Get localized message by key, with optional formatting."""
-    lang = os.getenv("LANGUAGE", "hu")
+    lang = os.getenv("LANGUAGE", "en")
     if lang not in MESSAGES:
-        lang = "hu"  # fallback to Hungarian
+        lang = "en"  # fallback to English
 
     message = MESSAGES[lang].get(key, f"[{key}]")  # fallback to key if not found
     if kwargs:
